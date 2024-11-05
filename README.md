@@ -1,4 +1,4 @@
-# mapbox-rsi
-Lightweight re-implementation of DemoRSI using Mapbox 
+# rsc-monitoring
+Lightweight re-implementation of DemoRSI using direct JS, HTML, CSS.
 
-Website: https://vstfl.github.io/mapbox-rsi/
+Website: https://vstfl.github.io/rsc-monitoring/
