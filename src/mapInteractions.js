@@ -4,6 +4,7 @@ import { scrollToBottom, studyAreaState } from "./webInteractions";
 import { addData, removeData, newChart } from "./charts.js";
 import RainLayer from "mapbox-gl-rain-layer";
 import { filterStudyArea } from "./interpolation.js";
+import { getState, setState, subscribe } from "./core/stateManager.js";
 
 /**
  * Handle's the majority of relevant map interactions for the user.
@@ -17,30 +18,38 @@ import { filterStudyArea } from "./interpolation.js";
  * - Miscellaneous Map Updates (Real-time views (i.e. rain, new data sources [to-do]))
  */
 
+// Initialize map instance
 mapboxgl.accessToken =
   "pk.eyJ1IjoidXJiaXp0b24iLCJhIjoiY2xsZTZvaXd0MGc4MjNzbmdseWNjM213eiJ9.z1YeFXYSbaMe93SMT6muVg";
-export const map = new mapboxgl.Map({
+const map = new mapboxgl.Map({
   container: "map",
   style: "mapbox://styles/urbizton/clve9aeu900c501rd7qcn14q6", // Default Dark
-
   center: [-94.53, 41.99],
   zoom: 6.4,
   maxZoom: 18,
 });
+
+// Set initial state
+setState("map", map);
+setState("currentGeoJSON", null);
+setState("currentInterpolation", null);
+
+// Add map controls
 map.addControl(
   new mapboxgl.NavigationControl({ visualizePitch: true }),
   "bottom-right",
 );
 map.addControl(new mapboxgl.ScaleControl({ maxWidth: 300, unit: "imperial" }));
 map.addControl(
-  new mapboxgl.FullscreenControl({
-    container: document.querySelector("body"),
-  }),
+  new mapboxgl.FullscreenControl({ container: document.querySelector("body") }),
   "bottom-right",
 );
 
 // When user clicks home, pans back to iowa
 function panToIowa() {
+  const map = getState("map");
+  if (!map) return;
+
   map.flyTo({
     center: [-94.53, 41.99],
     zoom: 6.7,
@@ -48,6 +57,7 @@ function panToIowa() {
     bearing: 0,
   });
 }
+
 document
   .getElementById("center-iowa")
   .addEventListener("click", function (event) {
@@ -56,6 +66,9 @@ document
   });
 
 function panToAverage(coordinates) {
+  const map = getState("map");
+  if (!map) return;
+
   let sumLong = 0;
   let sumLat = 0;
 
@@ -64,19 +77,15 @@ function panToAverage(coordinates) {
     sumLat += coordinates[i][1]; // latitude
   }
 
-  // Calculate the average longitude and latitude
   const avgLongitude = sumLong / coordinates.length;
   const avgLatitude = sumLat / coordinates.length;
 
-  // could convert to function
-  var arrowImg = document.getElementById("arrow-img");
+  const arrowImg = document.getElementById("arrow-img");
   const flipped = !arrowImg.classList.contains("flipped");
   const padding = {};
-  let currentWidth = document.getElementById("console").clientWidth - 200;
+  const currentWidth = document.getElementById("console").clientWidth - 200;
   padding["left"] = flipped ? 0 : currentWidth;
-  console.log(currentWidth);
 
-  // Return the average longitude and latitude as an array
   map.easeTo({
     padding: padding,
     center: [avgLongitude, avgLatitude],
@@ -84,14 +93,19 @@ function panToAverage(coordinates) {
   });
 }
 
-export let currentGeoJSON; // Ensure variable is availabe in global scope
-export let currentInterpolation;
 // Initial state of map, also ensures points stay the same when style changes
 map.on("style.load", () => {
+  const map = getState("map");
+  if (!map) return;
+
   map.resize();
   console.log("Map resized");
-  updateMapData(currentGeoJSON);
-  updateInterpolation(currentInterpolation);
+
+  const currentGeoJSON = getState("currentGeoJSON");
+  const currentInterpolation = getState("currentInterpolation");
+
+  if (currentGeoJSON) updateMapData(currentGeoJSON);
+  if (currentInterpolation) updateInterpolation(currentInterpolation);
 });
 
 // Obtain list of all coordinates from geoJSON
@@ -106,7 +120,12 @@ function extractCoordinatesFromGeoJSON(geoJSON) {
 }
 
 // Handle update of map data
-export async function updateMapData(newGeoJSON) {
+async function updateMapData(newGeoJSON) {
+  const map = getState("map");
+  if (!map) return;
+
+  setState("currentGeoJSON", newGeoJSON);
+
   // Need to add filter here to only visualize data that lies on the study area
 
   if (studyAreaState) {
@@ -121,12 +140,16 @@ export async function updateMapData(newGeoJSON) {
   }
   console.log(newGeoJSON);
   addPointLayer(newGeoJSON);
-  currentGeoJSON = newGeoJSON;
-  panToAverage(extractCoordinatesFromGeoJSON(currentGeoJSON));
+  panToAverage(extractCoordinatesFromGeoJSON(newGeoJSON));
 }
 
 // Same as above but specifically for interpolation data
-export function updateInterpolation(interpolationGeoJSON) {
+function updateInterpolation(interpolationGeoJSON) {
+  const map = getState("map");
+  if (!map) return;
+
+  setState("currentInterpolation", interpolationGeoJSON);
+
   if (map.getLayer("latestInterpolationLayer")) {
     map.removeLayer("latestInterpolationLayer");
   }
@@ -135,7 +158,6 @@ export function updateInterpolation(interpolationGeoJSON) {
   }
   addInterpolationLayer(interpolationGeoJSON);
   // console.log(interpolationGeoJSON);
-  currentInterpolation = interpolationGeoJSON;
 }
 
 // Customize visualization/interactivity of geoJSON data here
@@ -264,29 +286,35 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   function setMapStyle(style) {
+    const map = getState("map");
+    if (!map) return;
     map.setStyle("mapbox://styles/urbizton/" + style);
     console.log("Map style set to:", style);
   }
 });
 
+// Handle point interactivity
+let pointID = null;
+let uniqueID = null;
+let clickedPoint = false;
+let clickedPointValues = {
+  CAM: false,
+};
+let stateCAM = false;
+
+// Initialize UI elements
 const idDisplay = document.getElementById("pointID");
 const timeDisplay = document.getElementById("pointTimestamp");
 const imageDisplay = document.getElementById("pointImage");
 const chart = newChart();
 
-let pointID = null;
-let uniqueID = null;
-let clickedPoint = false;
-export let clickedPointValues = {
-  CAM: false,
-};
-let stateCAM = false;
-
 // General point interactivity
 map.on("mouseleave", "latestLayer", () => {
+  const map = getState("map");
+  if (!map) return;
+
   map.getCanvas().style.cursor = "default";
 
-  // console.log(` ${clickedPointValues} hovered: ${uniqueID}`);
   if (uniqueID) {
     map.setFeatureState(
       { source: "latestSource", id: uniqueID },
@@ -294,7 +322,6 @@ map.on("mouseleave", "latestLayer", () => {
     );
   }
 
-  // console.log(clickedPoint);
   if (!clickedPoint) {
     idDisplay.textContent = "";
     timeDisplay.textContent = "";
@@ -319,6 +346,9 @@ map.on("mouseleave", "latestLayer", () => {
 });
 
 map.on("click", "latestLayer", (event) => {
+  const map = getState("map");
+  if (!map) return;
+
   const features = map.queryRenderedFeatures(event.point, {
     layers: ["latestLayer"],
   });
@@ -332,18 +362,15 @@ map.on("click", "latestLayer", (event) => {
     );
   }
 
-  var arrowImg = document.getElementById("arrow-img");
+  const arrowImg = document.getElementById("arrow-img");
   const flipped = !arrowImg.classList.contains("flipped");
   const padding = {};
-  let currentWidth = document.getElementById("console").clientWidth - 200;
+  const currentWidth = document.getElementById("console").clientWidth - 200;
   padding["left"] = flipped ? 0 : currentWidth;
-  // console.log(padding);
 
   map.easeTo({
     center: coordinate,
     padding: padding,
-    // pitch: 0,
-    // bearing: 0,
     duration: 600,
   });
 
@@ -351,10 +378,9 @@ map.on("click", "latestLayer", (event) => {
 
   // Define how values are interpreted
   let eventProperties = event.features[0].properties;
-  var imgControls = document.getElementById("img-buttons");
+  const imgControls = document.getElementById("img-buttons");
 
   if (eventProperties.type == "AVL") {
-    console.log(eventProperties);
     clickedPointValues = {
       specificID: event.features[0]["id"],
       avlID: eventProperties.id,
@@ -365,16 +391,8 @@ map.on("click", "latestLayer", (event) => {
     };
     imgControls.style.display = "none";
   } else {
-    // add function to trigger imgcontrol functionality
-    // should include:
-    // check how many images
-    // visualize # of images, what image out of total images
-    //
     imgControls.style.display = "flex";
-
     stateCAM = true;
-    // console.log(eventProperties);
-    // console.log(JSON.parse(eventProperties.angles));
     let recentangle = eventProperties.recentangle;
     clickedPointValues = {
       type: eventProperties.type,
@@ -387,8 +405,6 @@ map.on("click", "latestLayer", (event) => {
       ),
       image: JSON.parse(eventProperties.angles)[recentangle].url,
     };
-
-    // if button is clicked, trigger function -> update/iterate through angles
   }
 
   idDisplay.textContent = clickedPointValues.avlID;
@@ -640,3 +656,9 @@ map.on("idle", () => {
     layers.appendChild(link);
   }
 });
+
+// Export map instance and functions
+export { map };
+
+// Export functions at the end
+export { updateMapData, updateInterpolation };

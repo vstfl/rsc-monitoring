@@ -18,16 +18,18 @@ import {
 import { map } from "./mapInteractions.js";
 import * as geojson from "geojson";
 import { DateTime } from "luxon";
+import { getState, setState, subscribe } from "./core/stateManager.js";
+
+// Initialize state subscriptions
+subscribe("map", (newMap) => {
+  console.log("Map state updated:", newMap);
+});
 
 // Handle study area toggle
 const studyAreaToggle = document.querySelector("#studyarea-toggle");
 export let studyAreaState = true;
 studyAreaToggle.addEventListener("change", (e) => {
-  if (e.target.checked) {
-    studyAreaState = true;
-  } else {
-    studyAreaState = false;
-  }
+  setState("studyAreaState", e.target.checked);
 });
 
 // Handle realtime toggle
@@ -35,17 +37,10 @@ const realtimeToggle = document.querySelector("#realtime-toggle");
 const archivedQuery = document.querySelectorAll(".archived-query");
 let realtimeState = false;
 realtimeToggle.addEventListener("change", (e) => {
-  if (e.target.checked) {
-    realtimeState = true;
-    archivedQuery.forEach((query) => {
-      query.style.display = "none";
-    });
-  } else {
-    realtimeState = false;
-    archivedQuery.forEach((query) => {
-      query.style.display = "flex";
-    });
-  }
+  realtimeState = e.target.checked;
+  archivedQuery.forEach((query) => {
+    query.style.display = realtimeState ? "none" : "flex";
+  });
   console.log(`Realtime: ${realtimeState}`);
 });
 
@@ -58,10 +53,12 @@ document.getElementById("shift-button").addEventListener("click", function () {
   const padding = {};
   let currentWidth = document.getElementById("console").clientWidth;
   padding["right"] = flipped ? 0 : currentWidth;
-  map.easeTo({
-    padding: padding,
-    duration: 1000,
-  });
+  if (map) {
+    map.easeTo({
+      padding: padding,
+      duration: 1000,
+    });
+  }
 });
 
 // Handle range slider value change visual
@@ -83,6 +80,7 @@ export function scrollToBottom() {
 // Check if caLogic to gobtain lbmost recent image for specific said angleeach angle
 document.addEventListener("DOMContentLoaded", function () {
   let imageElement = document.getElementById("pointImage");
+  let clickedPointValues = getState("clickedPointValues");
 
   function toggleImageSrc() {
     let img1 = clickedPointValues.image;
@@ -96,10 +94,10 @@ document.addEventListener("DOMContentLoaded", function () {
       // console.log(img2);
 
       imageElement.src = img2;
-      clickedPointValues["CAM"] = true;
+      setState("clickedPointValues", { ...clickedPointValues, CAM: true });
     } else {
       imageElement.src = img1;
-      clickedPointValues["CAM"] = false;
+      setState("clickedPointValues", { ...clickedPointValues, CAM: false });
     }
   }
 
@@ -355,8 +353,10 @@ function updateInterfaceNIK() {
 // Handle auto-population of NIK data (TODO: Remove this function once NIK is automated)
 document.addEventListener("DOMContentLoaded", function () {
   const select = document.getElementById("nik-options");
-  const jsonFilePath = "https://raw.githubusercontent.com/vstfl/mapbox-rsi/main/docs/assets/generatedNIKInterpolations/file-list.json";
-  const baseFileUrl = "https://raw.githubusercontent.com/vstfl/mapbox-rsi/main/docs/assets/generatedNIKInterpolations/";
+  const jsonFilePath =
+    "https://raw.githubusercontent.com/vstfl/mapbox-rsi/main/docs/assets/generatedNIKInterpolations/file-list.json";
+  const baseFileUrl =
+    "https://raw.githubusercontent.com/vstfl/mapbox-rsi/main/docs/assets/generatedNIKInterpolations/";
 
   function populateDropdown(files) {
     files.forEach((file) => {
@@ -377,9 +377,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
 function NIKData(inputString) {
   // console.log(inputString)
-  const parts = inputString.split('/').pop().split('_');
-  let [year, month, day, hour] = parts
-  hour = hour.split('.')[0]
+  const parts = inputString.split("/").pop().split("_");
+  let [year, month, day, hour] = parts;
+  hour = hour.split(".")[0];
 
   // Note: We use America/Chicago timezone as the input is in CST
   const dateTime = DateTime.fromObject(
@@ -407,9 +407,7 @@ document
 
     // Change currentNIKGeoJSON according to selected value
     try {
-      const response = await fetch(
-         selectedValue,
-      );
+      const response = await fetch(selectedValue);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

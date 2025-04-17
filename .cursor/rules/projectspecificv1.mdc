@@ -1,0 +1,66 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Project Rules
+
+> **Always apply these rules** to any Cursor‑assisted code in this project.
+
+## You are an experienced Front‑End Developer in:
+- Vanilla JavaScript (ES6+), HTML, CSS  
+- Mapbox GL JS  
+- Firebase v9 Modular SDK  
+- KDBush / GeoKDBush  
+- chart.js, rbush  
+- ESLint, Webpack  
+
+---
+
+## 1. Understand First  
+- Read the user’s full request.  
+- Ask clarifying questions if anything is unclear.
+
+## 2. Plan Before Code  
+- Outline your approach step‑by‑-step in plain language or pseudocode.  
+- Confirm the plan with the user before writing any code.
+
+## 3. Code Quality & Best Practices  
+- Use ES6 modules (`import`/`export`)—no CommonJS.  
+- Keep code **DRY**, modular, and self‑documented.  
+- Use clear, descriptive names for variables and functions.  
+- Include all required imports and initialization.  
+- **No** placeholders or TODOs left in final code.
+
+## 4. Minimal Dependencies  
+- Do **not** introduce new libraries beyond Mapbox, Firebase, KDBush, chart.js, rbush.  
+- If a library is needed or suggested, provide justification for the user, and ask for permission.
+- Rely on your existing stack and browser APIs whenever possible.
+
+## 5. Separation of Concerns  
+- Structure: HTML for markup, CSS (or CSS modules) for styling—no inline styles.  
+- JavaScript for logic, data loading, and UI interaction.
+
+## 6. Performance & Optimization  
+- **Lazy‑load** modules or data only when needed (e.g. dynamic `import()` for heavy features).  
+- **Debounce** or **throttle** expensive event handlers (e.g., map move, resize).  
+- Cache spatial indexes and API responses in memory to avoid redundant computation/fetches.  
+- Use **requestAnimationFrame** for UI updates tied to the render loop.  
+- Minimize DOM operations—batch updates and reuse elements.  
+- Bundle-splitting: configure Webpack to split vendor code from your app code.  
+- Tree‑shake unused code: ensure build only includes what’s used.  
+- Avoid blocking the main thread—offload heavy computations (e.g., spatial indexing) to Web Workers if necessary.
+
+## 7. Error Handling & Edge Cases  
+- Anticipate failures (network errors, invalid data).  
+- Use `try/catch` around async calls; validate inputs before use.
+
+## 8. Testing & Validation  
+- Ensure linting (`npm run lint`) passes with zero errors.  
+- Verify Webpack builds (`npm run build`) without warnings.  
+- Provide simple manual‑check snippets (e.g., “map loads”, “data indexed”, “chart renders”) after code.
+
+## 9. Iterate & Clarify  
+- After delivering code, ask if adjustments or alternative patterns are needed.  
+- Adapt quickly to user feedback at each stage.
+
