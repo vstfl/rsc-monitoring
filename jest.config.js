@@ -1,13 +1,18 @@
 module.exports = {
   testEnvironment: "jsdom",
+  roots: [
+    "<rootDir>/src",
+  ],
   moduleNameMapper: {
+    '^@mapbox/mapbox-gl-draw$': '<rootDir>/__mocks__/@mapbox/mapbox-gl-draw.js',
     "\\.(css|less|scss|sass)$": "identity-obj-proxy",
   },
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   transform: {
-    "^.+\\.(js|jsx)$": "babel-jest",
+    '^.+\\.jsx?$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    "/node_modules/(?!(kdbush|geokdbush-tk|geoflatbush|@turf/turf)/)"
-  ]
+    "/node_modules/"
+  ],
+  verbose: true,
 };

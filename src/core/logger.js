@@ -24,7 +24,7 @@ const getInitialLogLevel = () => {
 
 // Default configuration
 let config = {
-  level: getInitialLogLevel(),
+  level: LogLevels.INFO, // Default level
   enableTimestamps: true,
   enableContext: true,
 };
@@ -38,13 +38,35 @@ let config = {
  */
 function configure(options = {}) {
   let newLevel = config.level;
-  if (options.level && LogLevels[options.level.toUpperCase()] !== undefined) {
-      newLevel = LogLevels[options.level.toUpperCase()];
+  // Check if a level option is provided
+  if (options.level !== undefined) {
+    // Check if the provided level is a string (log level name)
+    if (typeof options.level === 'string') {
+      const upperCaseLevel = options.level.toUpperCase();
+      if (LogLevels[upperCaseLevel] !== undefined) {
+        newLevel = LogLevels[upperCaseLevel];
+      } else {
+        console.warn(`[Logger] Invalid log level string: '${options.level}'. Using current level.`);
+      }
+    // Check if the provided level is a number (log level value)
+    } else if (typeof options.level === 'number') {
+      // Check if the number corresponds to a valid log level value
+      const isValidLevel = Object.values(LogLevels).includes(options.level);
+      if (isValidLevel) {
+        newLevel = options.level;
+      } else {
+        console.warn(`[Logger] Invalid log level number: ${options.level}. Using current level.`);
+      }
+    } else {
+       console.warn(`[Logger] Invalid type for log level: ${typeof options.level}. Using current level.`);
+    }
   }
-  config = { 
-      ...config, 
-      ...options, 
-      level: newLevel // Ensure level is updated correctly
+  
+  // Update the configuration, only overriding provided options
+  config = {
+    level: newLevel,
+    enableTimestamps: options.enableTimestamps !== undefined ? options.enableTimestamps : config.enableTimestamps,
+    enableContext: options.enableContext !== undefined ? options.enableContext : config.enableContext,
   };
 }
 

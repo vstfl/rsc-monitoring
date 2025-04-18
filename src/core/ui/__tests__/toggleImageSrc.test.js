@@ -9,13 +9,19 @@ jest.mock('mapbox-gl', () => ({}));
 jest.mock('../../../mapInteractions', () => ({}));
 
 import { toggleImageSrc } from '../uiInteractions';
-import { getState, setState } from '../../../core/stateManager';
+import stateManager from '../../stateManager';
+import { getState, setState } from '../../stateManager';
 
 // Mock the stateManager
 jest.mock('../../../core/stateManager', () => ({
   getState: jest.fn(),
   setState: jest.fn()
 }));
+
+// Mock dependencies
+jest.mock('../../stateManager');
+jest.mock('../../logger');
+jest.mock('../../../charts.js');
 
 describe('toggleImageSrc', () => {
   let mockImageElement;
@@ -25,7 +31,7 @@ describe('toggleImageSrc', () => {
     jest.clearAllMocks();
     
     // Create mock image element
-    mockImageElement = { src: 'original-image.jpg' };
+    mockImageElement = { src: 'original-image.jpg', style: {} };
     
     // Mock document methods
     document.getElementById = jest.fn(id => {
@@ -42,6 +48,12 @@ describe('toggleImageSrc', () => {
   });
   
   test('should toggle from original to gradcam image for RWIS points', () => {
+    getState.mockReturnValueOnce({
+      image: 'https://example.com/IDOT-048-04_201901121508.jpg',
+      type: 'RWIS',
+      CAM: false
+    });
+
     toggleImageSrc();
     
     // Check that the image source was updated to the gradcam version
@@ -56,7 +68,7 @@ describe('toggleImageSrc', () => {
   });
   
   test('should toggle from gradcam back to original image', () => {
-    // Mock clickedPointValues with CAM=true
+    // Mock clickedPointValues with CAM=true for this specific test
     getState.mockReturnValueOnce({
       image: 'https://example.com/IDOT-048-04_201901121508.jpg',
       type: 'RWIS',
@@ -77,7 +89,7 @@ describe('toggleImageSrc', () => {
   });
   
   test('should not toggle for non-RWIS points', () => {
-    // Mock clickedPointValues for AVL type
+    // Mock clickedPointValues for AVL type for this specific test
     getState.mockReturnValueOnce({
       image: 'https://example.com/avl-image.jpg',
       type: 'AVL',

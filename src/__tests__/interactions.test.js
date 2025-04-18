@@ -129,6 +129,7 @@ global.document = {
       return {
         src: '',
         parentNode: { style: { display: 'none' } },
+        style: {},
         addEventListener: jest.fn()
       };
     }
@@ -207,6 +208,50 @@ jest.mock('../mapInteractions.js', () => ({
   initializeMap: jest.fn(),
   setupMapInteractions: jest.fn()
 }));
+
+import { 
+  initializeMap, 
+  addGeoJsonSource, 
+  addMapLayers, 
+  handleMapClick, 
+  // Removed: loadSubdividedRoads - assuming this is handled elsewhere or mocked if needed 
+} from '../mapInteractions'; // Adjust path as needed
+import { initializeFirebase } from '../firebaseHandler'; // Adjust path as needed
+import { setupEventListeners } from '../webInteractions'; // Adjust path as needed
+import stateManager from '../core/stateManager'; // <<< Corrected path
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
+
+jest.mock('../mapInteractions');
+jest.mock('../firebaseHandler');
+jest.mock('../webInteractions');
+jest.mock('@mapbox/mapbox-gl-draw');
+jest.mock('mapbox-gl', () => ({
+  Map: jest.fn(() => ({
+    addControl: jest.fn(),
+    on: jest.fn(),
+    remove: jest.fn(),
+    getSource: jest.fn(() => ({
+      setData: jest.fn(),
+    })),
+    getLayer: jest.fn(),
+    addSource: jest.fn(),
+    addLayer: jest.fn(),
+    setFilter: jest.fn(),
+    queryRenderedFeatures: jest.fn(),
+    getCanvas: jest.fn(() => ({
+      style: { cursor: '' }
+    })),
+  })),
+  Popup: jest.fn(() => ({
+    setLngLat: jest.fn().mockReturnThis(),
+    setHTML: jest.fn().mockReturnThis(),
+    addTo: jest.fn().mockReturnThis(),
+    remove: jest.fn(),
+  })),
+  NavigationControl: jest.fn(),
+  ScaleControl: jest.fn(),
+}));
+jest.mock('../charts.js');
 
 describe('Map and Web Interactions', () => {
   beforeEach(() => {
@@ -309,6 +354,7 @@ describe('Map and Web Interactions', () => {
       mockImageElement = { 
         src: '',
         parentNode: { style: { display: 'none' } },
+        style: {},
         addEventListener: jest.fn()
       };
       // Ensure getElementById is a mock function before setting implementation
