@@ -279,44 +279,38 @@ describe('UI Interactions', () => {
   });
   
   describe('toggleImageSrc', () => {
-    test('should toggle to gradcam image for RWIS points', () => {
-      // Setup specific mock return values for this test
-      getState.mockReturnValueOnce({
+    test('should call setState to toggle CAM from false to true for RWIS points', () => {
+      const initialPointData = {
         image: 'https://example.com/IDOT-048-04_201901121508.jpg',
         type: 'RWIS',
         CAM: false
-      });
+      };
+      // Setup specific mock return values for this test
+      getState.mockReturnValueOnce(initialPointData);
       
       toggleImageSrc();
       
-      // Check image was updated
-      expect(mockImageElement.src).toBe('https://storage.googleapis.com/rwis_cam_images/images/IDOT-048-04_201901121508.jpg_gradcam.png');
-      
       // Check state was updated
       expect(setState).toHaveBeenCalledWith('clickedPointValues', {
-        image: 'https://example.com/IDOT-048-04_201901121508.jpg',
-        type: 'RWIS',
+        ...initialPointData,
         CAM: true
       });
     });
     
-    test('should toggle back to original image when CAM is true', () => {
-      // Setup specific mock return values for this test
-      getState.mockReturnValueOnce({
+    test('should call setState to toggle CAM from true to false for RWIS points', () => {
+      const initialPointData = {
         image: 'https://example.com/IDOT-048-04_201901121508.jpg',
         type: 'RWIS',
         CAM: true
-      });
+      };
+      // Setup specific mock return values for this test
+      getState.mockReturnValueOnce(initialPointData);
       
       toggleImageSrc();
       
-      // Check image was updated back to original
-      expect(mockImageElement.src).toBe('https://example.com/IDOT-048-04_201901121508.jpg');
-      
       // Check state was updated
       expect(setState).toHaveBeenCalledWith('clickedPointValues', {
-        image: 'https://example.com/IDOT-048-04_201901121508.jpg',
-        type: 'RWIS',
+        ...initialPointData,
         CAM: false
       });
     });

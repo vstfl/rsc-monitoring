@@ -174,6 +174,9 @@ This document outlines key issues identified in the current codebase and recomme
    - Document complex algorithms and data structures
    - Create API documentation
 
+4. **Refactor UI Interactions for Clarity**
+   - **Example (Completed): GradCAM Toggle Fix:** Refactored the GradCAM image toggle (`toggleImageSrc` and `updatePointInfoPanel`). The logic is now state-driven: `toggleImageSrc` only updates the `CAM` flag in the state, and `updatePointInfoPanel` reads this state to determine the correct image URL. Additionally, `updatePointInfoPanel` now correctly calculates and stores the original image's aspect ratio in state (`imageAspectRatio`) on first load and applies this stored ratio to both original and GradCAM images to ensure consistent display dimensions.
+
 ## 6. Testing and Quality Assurance
 
 ### Issues:

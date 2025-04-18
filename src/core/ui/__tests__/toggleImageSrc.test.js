@@ -30,16 +30,14 @@ describe('toggleImageSrc', () => {
     // Reset mocks
     jest.clearAllMocks();
     
-    // Create mock image element
+    // Mock document methods (needed for potential future tests, but not strictly by toggleImageSrc anymore)
     mockImageElement = { src: 'original-image.jpg', style: {} };
-    
-    // Mock document methods
     document.getElementById = jest.fn(id => {
       if (id === 'pointImage') return mockImageElement;
       return null;
     });
     
-    // Mock clickedPointValues state
+    // Default mock clickedPointValues state (can be overridden per test)
     getState.mockReturnValue({
       image: 'https://example.com/IDOT-048-04_201901121508.jpg',
       type: 'RWIS',
@@ -47,87 +45,89 @@ describe('toggleImageSrc', () => {
     });
   });
   
-  test('should toggle from original to gradcam image for RWIS points', () => {
-    getState.mockReturnValueOnce({
+  test('should call setState to toggle CAM from false to true for RWIS points', () => {
+    const initialPointData = {
       image: 'https://example.com/IDOT-048-04_201901121508.jpg',
       type: 'RWIS',
       CAM: false
-    });
+    };
+    getState.mockReturnValueOnce(initialPointData);
 
     toggleImageSrc();
     
-    // Check that the image source was updated to the gradcam version
-    expect(mockImageElement.src).toBe('https://storage.googleapis.com/rwis_cam_images/images/IDOT-048-04_201901121508.jpg_gradcam.png');
-    
-    // Check that state was updated
+    // Check that state was updated with CAM: true
     expect(setState).toHaveBeenCalledWith('clickedPointValues', {
+      ...initialPointData,
+      CAM: true
+    });
+    // Check image src is NOT modified directly (this is now handled by updatePointInfoPanel)
+    expect(mockImageElement.src).toBe('original-image.jpg'); 
+  });
+  
+  test('should call setState to toggle CAM from true to false for RWIS points', () => {
+    const initialPointData = {
       image: 'https://example.com/IDOT-048-04_201901121508.jpg',
       type: 'RWIS',
       CAM: true
-    });
-  });
-  
-  test('should toggle from gradcam back to original image', () => {
-    // Mock clickedPointValues with CAM=true for this specific test
-    getState.mockReturnValueOnce({
-      image: 'https://example.com/IDOT-048-04_201901121508.jpg',
-      type: 'RWIS',
-      CAM: true
-    });
+    };
+    getState.mockReturnValueOnce(initialPointData);
     
     toggleImageSrc();
-    
-    // Check that the image source was updated back to the original
-    expect(mockImageElement.src).toBe('https://example.com/IDOT-048-04_201901121508.jpg');
-    
-    // Check that state was updated
+        
+    // Check that state was updated with CAM: false
     expect(setState).toHaveBeenCalledWith('clickedPointValues', {
-      image: 'https://example.com/IDOT-048-04_201901121508.jpg',
-      type: 'RWIS',
+      ...initialPointData,
       CAM: false
     });
+    // Check image src is NOT modified directly
+    expect(mockImageElement.src).toBe('original-image.jpg');
   });
   
-  test('should not toggle for non-RWIS points', () => {
-    // Mock clickedPointValues for AVL type for this specific test
-    getState.mockReturnValueOnce({
+  test('should NOT call setState for non-RWIS points', () => {
+    const initialPointData = {
       image: 'https://example.com/avl-image.jpg',
       type: 'AVL',
       CAM: false
-    });
+    };
+    getState.mockReturnValueOnce(initialPointData);
     
     toggleImageSrc();
-    
-    // Image source should be set to original image
-    expect(mockImageElement.src).toBe('https://example.com/avl-image.jpg');
-    
-    // State should be updated but CAM should still be false
-    expect(setState).toHaveBeenCalledWith('clickedPointValues', {
-      image: 'https://example.com/avl-image.jpg',
-      type: 'AVL',
-      CAM: false
-    });
+        
+    // State should NOT be updated
+    expect(setState).not.toHaveBeenCalled();
+    // Check image src is NOT modified
+    expect(mockImageElement.src).toBe('original-image.jpg');
   });
   
-  test('should handle missing image element', () => {
+  test('should still call setState even if image element is missing', () => {
+    const initialPointData = {
+        image: 'https://example.com/IDOT-048-04_201901121508.jpg',
+        type: 'RWIS',
+        CAM: false
+      };
+    getState.mockReturnValueOnce(initialPointData);
+      
     // Mock document.getElementById to return null
     document.getElementById.mockReturnValue(null);
     
     // Should not throw
     expect(() => toggleImageSrc()).not.toThrow();
     
-    // setState should not be called
-    expect(setState).not.toHaveBeenCalled();
+    // setState SHOULD still be called because the function no longer depends on the element
+    expect(setState).toHaveBeenCalledWith('clickedPointValues', {
+        ...initialPointData,
+        CAM: true
+      });
   });
   
-  test('should handle missing clickedPointValues', () => {
+  test('should handle missing clickedPointValues gracefully', () => {
     // Mock getState to return null
     getState.mockReturnValueOnce(null);
     
     // Should not throw
     expect(() => toggleImageSrc()).not.toThrow();
     
-    // setState should not be called
+    // setState should NOT be called
     expect(setState).not.toHaveBeenCalled();
   });
 }); 

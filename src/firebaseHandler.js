@@ -106,61 +106,76 @@ export async function queryImagesByDateRange(startDate, endDate) {
   });
 
   return Logger.timeAsync('Query images by date range', async () => {
-    const collectionRef = collectionGroup(db, "Images");
+    try {
+      const collectionRef = collectionGroup(db, "Images");
 
-    const startTimestamp = Timestamp.fromDate(startDate);
+      const startTimestamp = Timestamp.fromDate(startDate);
 
-    const modStart = new Date(endDate.getTime() - 60 * 60000); // Change 60. This value should match that of the mesonetscrape
-    const startTimestampRWIS = Timestamp.fromDate(modStart); // Distinction to ensure RWIS data is latest rather than windowed
+      const modStart = new Date(endDate.getTime() - 60 * 60000); // Change 60. This value should match that of the mesonetscrape
+      const startTimestampRWIS = Timestamp.fromDate(modStart); // Distinction to ensure RWIS data is latest rather than windowed
 
-    const endTimestamp = Timestamp.fromDate(endDate);
+      const endTimestamp = Timestamp.fromDate(endDate);
 
-    const imagesAVL = await query(
-      collectionRef,
-      limit(5000), // TODO: Adjust this later
-      where("Date", ">=", startTimestamp),
-      where("Date", "<=", endTimestamp),
-      where("Type", "==", "AVL"),
-    );
+      const imagesAVLQuery = query(
+        collectionRef,
+        limit(5000), // TODO: Adjust this later
+        where("Date", ">=", startTimestamp),
+        where("Date", "<=", endTimestamp),
+        where("Type", "==", "AVL"),
+      );
 
-    const imagesRWIS = await query(
-      collectionRef,
-      limit(300), // TODO: Adjust this later
-      where("Date", ">=", startTimestampRWIS),
-      where("Date", "<=", endTimestamp),
-      where("Type", "==", "RWIS"),
-    );
+      const imagesRWISQuery = query(
+        collectionRef,
+        limit(300), // TODO: Adjust this later
+        where("Date", ">=", startTimestampRWIS),
+        where("Date", "<=", endTimestamp),
+        where("Type", "==", "RWIS"),
+      );
 
-    const querySnapshotAVL = await getDocs(imagesAVL);
-    const querySnapshotRWIS = await getDocs(imagesRWIS);
-    const imagesArrayAVL = [];
-    const imagesArrayRWIS = [];
+      // Execute queries concurrently
+      const [querySnapshotAVL, querySnapshotRWIS] = await Promise.all([
+        getDocs(imagesAVLQuery),
+        getDocs(imagesRWISQuery)
+      ]);
 
-    querySnapshotAVL.forEach((doc) => {
-      if (doc.data()["Type"] == "AVL") {
-        imagesArrayAVL.push({
-          id: doc.id,
-          data: doc.data(),
-        });
-      }
-    });
+      const imagesArrayAVL = [];
+      const imagesArrayRWIS = [];
 
-    querySnapshotRWIS.forEach((doc) => {
-      if (doc.data()["Type"] == "RWIS") {
-        imagesArrayRWIS.push({
-          id: doc.id,
-          data: doc.data(),
-        });
-      }
-    });
+      querySnapshotAVL.forEach((doc) => {
+        // Basic check if data is AVL type
+        if (doc.data() && doc.data()["Type"] == "AVL") {
+          imagesArrayAVL.push({
+            id: doc.id,
+            data: doc.data(),
+          });
+        }
+      });
 
-    // TODO: Remove any duplicates (entries with same image url)
-    // REASON: AVL source data can come from the previous archive and the new archive, so overlaps can exist
-    Logger.info('Query results retrieved', CONTEXT, { 
-      avlCount: imagesArrayAVL.length, 
-      rwisCount: imagesArrayRWIS.length 
-    });
-    
-    return [imagesArrayAVL, imagesArrayRWIS];
+      querySnapshotRWIS.forEach((doc) => {
+        // Basic check if data is RWIS type
+        if (doc.data() && doc.data()["Type"] == "RWIS") {
+          imagesArrayRWIS.push({
+            id: doc.id,
+            data: doc.data(),
+          });
+        }
+      });
+
+      // TODO: Remove any duplicates (entries with same image url)
+      // REASON: AVL source data can come from the previous archive and the new archive, so overlaps can exist
+      Logger.info('Query results retrieved', CONTEXT, { 
+        avlCount: imagesArrayAVL.length, 
+        rwisCount: imagesArrayRWIS.length 
+      });
+      
+      return [imagesArrayAVL, imagesArrayRWIS];
+    } catch (error) {
+        Logger.error('Error querying Firestore date range', CONTEXT, error);
+        // Depending on desired behavior, you might want to:
+        // 1. Rethrow the error: throw error;
+        // 2. Return an empty result: 
+        return [[], []]; 
+        // 3. Return null or a specific error indicator
+    }
   }, CONTEXT);
 }

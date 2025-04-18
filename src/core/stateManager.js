@@ -34,11 +34,16 @@ const state = {
  * @param {Function} callback - Function to call when state changes
  */
 export function subscribe(key, callback) {
+  if (typeof callback !== 'function') {
+    Logger.error(`Attempted to subscribe to key '${key}' with a non-function callback:`, CONTEXT, callback);
+    return;
+  }
   if (!subscribers.has(key)) {
     subscribers.set(key, new Set());
   }
   subscribers.get(key).add(callback);
-  Logger.debug(`New subscriber added for key: ${key}`, CONTEXT, { 
+  Logger.info(`Subscription registered for key: '${key}'`, CONTEXT, { 
+    callbackName: callback.name || 'anonymous',
     subscriberCount: subscribers.get(key).size 
   });
 }
@@ -99,6 +104,54 @@ export function getState(key) {
   Logger.debug(`Getting state for key: ${key}`, CONTEXT);
   return state[key];
 }
+
+// Define the initial state structure for resetting
+const initialState = {
+  currentGeoJSON: null,
+  currentInterpolation: null,
+  studyAreaState: true,
+  clickedPointValues: {
+    CAM: false,
+    type: null,
+    specificID: null,
+    avlID: null,
+    timestamp: null,
+    classification: null,
+    classes: null,
+    image: null
+  },
+  map: null // Map instance is usually set during initialization
+};
+
+/**
+ * Resets the state to its initial values. 
+ * ONLY intended for use in testing environments.
+ */
+function resetStateForTesting() {
+  Logger.warn('Resetting state for testing purposes.', CONTEXT);
+  // Deep copy the initial state to avoid modifying the template
+  const initialStateCopy = JSON.parse(JSON.stringify(initialState));
+  // Preserve the map instance if it exists, as it's often needed across tests
+  initialStateCopy.map = state.map; 
+
+  // Clear current state keys
+  Object.keys(state).forEach(key => {
+    delete state[key];
+  });
+
+  // Assign initial state keys
+  Object.assign(state, initialStateCopy);
+
+  // Clear all subscribers
+  subscribers.clear();
+}
+
+// Conditionally export the reset function only for non-production environments
+let exportedResetFunction = null;
+if (process.env.NODE_ENV !== 'production') {
+  exportedResetFunction = resetStateForTesting;
+}
+export { exportedResetFunction as resetStateForTesting };
 
 /**
  * Initialize the state manager with required dependencies

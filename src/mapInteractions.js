@@ -5,7 +5,8 @@ import { addData, removeData, newChart } from "./charts.js";
 import RainLayer from "mapbox-gl-rain-layer";
 import { filterStudyArea } from "./interpolation.js";
 import { getState, setState, subscribe } from "./core/stateManager.js";
-import { toggleImageSrc, populateAngleSelector } from './core/ui/uiInteractions.js';
+import Logger from './core/logger.js';
+const CONTEXT = 'MapInteractions';
 
 /**
  * Handle's the majority of relevant map interactions for the user.
@@ -22,36 +23,71 @@ import { toggleImageSrc, populateAngleSelector } from './core/ui/uiInteractions.
 // Initialize map instance
 mapboxgl.accessToken =
   "pk.eyJ1IjoidXJiaXp0b24iLCJhIjoiY2xsZTZvaXd0MGc4MjNzbmdseWNjM213eiJ9.z1YeFXYSbaMe93SMT6muVg";
-const map = new mapboxgl.Map({
-  container: "map",
-  style: "mapbox://styles/urbizton/clve9aeu900c501rd7qcn14q6", // Default Dark
-  center: [-94.53, 41.99],
-  zoom: 6.4,
-  maxZoom: 18,
-});
 
-// Add listener for map errors (like style loading failure)
-map.on('error', (e) => {
-    console.error('Mapbox GL Error:', e.error); // Log the underlying error object
-    // Optionally: Display a user-friendly message on the UI
-    // Example: document.getElementById('map-error-message').textContent = 'Failed to load map style. Please check token or style URL.';
-});
+let map;
 
-// Set initial state
-setState("map", map);
-setState("currentGeoJSON", null);
-setState("currentInterpolation", null);
+try {
+  map = new mapboxgl.Map({
+    container: "map",
+    style: "mapbox://styles/urbizton/clve9aeu900c501rd7qcn14q6", // Default Dark
+    center: [-94.53, 41.99],
+    zoom: 6.4,
+    maxZoom: 18,
+  });
+  
+  // Add listener for map errors (like style loading failure)
+  map.on('error', (e) => {
+      // Log the underlying error object using the Logger
+      Logger.error('Mapbox GL Error', CONTEXT, e.error || e);
+      // Optionally: Display a user-friendly message on the UI
+      // Example: document.getElementById('map-error-message').textContent = 'Map failed to load. Please try refreshing.';
+  });
 
-// Add map controls
-map.addControl(
-  new mapboxgl.NavigationControl({ visualizePitch: true }),
-  "bottom-right",
-);
-map.addControl(new mapboxgl.ScaleControl({ maxWidth: 300, unit: "imperial" }));
-map.addControl(
-  new mapboxgl.FullscreenControl({ container: document.querySelector("body") }),
-  "bottom-right",
-);
+  // Set initial state only if map initialized successfully
+  setState("map", map);
+  setState("currentGeoJSON", null);
+  setState("currentInterpolation", null);
+
+  // Add map controls only if map initialized successfully
+  map.addControl(
+    new mapboxgl.NavigationControl({ visualizePitch: true }),
+    "bottom-right",
+  );
+  map.addControl(new mapboxgl.ScaleControl({ maxWidth: 300, unit: "imperial" }));
+  map.addControl(
+    new mapboxgl.FullscreenControl({ container: document.querySelector("body") }),
+    "bottom-right",
+  );
+
+  // Attach style.load listener only if map initialized successfully
+  map.on("style.load", () => {
+    const map = getState("map");
+    if (!map) return;
+
+    map.resize();
+    console.log("Map resized");
+
+    const currentGeoJSON = getState("currentGeoJSON");
+    const currentInterpolation = getState("currentInterpolation");
+
+    if (currentGeoJSON) updateMapData(currentGeoJSON);
+    if (currentInterpolation) updateInterpolation(currentInterpolation);
+  });
+
+} catch (initializationError) {
+    // Catch errors during the map constructor itself (less common)
+    Logger.error('Fatal Mapbox GL Initialization Error', CONTEXT, initializationError);
+    // Display a critical error message to the user
+    const mapContainer = document.getElementById('map');
+    if (mapContainer) {
+        mapContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Error initializing map. Please refresh the page.</div>';
+    }
+    // Prevent further map-related operations if initialization failed
+    map = null; // Ensure map variable is null
+}
+
+// Export the map instance (might be null if init failed)
+export { map };
 
 // When user clicks home, pans back to iowa
 function panToIowa() {
@@ -68,7 +104,7 @@ function panToIowa() {
 
 document
   .getElementById("center-iowa")
-  .addEventListener("click", function (event) {
+  ?.addEventListener("click", function (event) {
     event.preventDefault();
     panToIowa();
   });
@@ -76,13 +112,13 @@ document
 function panToAverage(coordinates) {
   const map = getState("map");
   if (!map) {
-    console.error("[panToAverage] Map state is not available.");
+    Logger.error("[panToAverage] Map state is not available.", CONTEXT);
     return;
   }
 
-  console.log(`[panToAverage] Received ${coordinates?.length || 0} coordinates.`);
+  Logger.debug(`[panToAverage] Received ${coordinates?.length || 0} coordinates.`, CONTEXT);
   if (!coordinates || coordinates.length === 0) {
-    console.warn("[panToAverage] No coordinates provided, cannot pan.");
+    Logger.warn("[panToAverage] No coordinates provided, cannot pan.", CONTEXT);
     return; 
   }
 
@@ -91,54 +127,31 @@ function panToAverage(coordinates) {
   let validCoordsCount = 0;
 
   for (let i = 0; i < coordinates.length; i++) {
-    // Ensure coordinates are valid numbers
     if (coordinates[i] && typeof coordinates[i][0] === 'number' && typeof coordinates[i][1] === 'number' && !isNaN(coordinates[i][0]) && !isNaN(coordinates[i][1])) {
       sumLong += coordinates[i][0]; // longitude
       sumLat += coordinates[i][1]; // latitude
       validCoordsCount++;
     } else {
-      console.warn(`[panToAverage] Skipping invalid coordinate pair at index ${i}:`, coordinates[i]);
+      Logger.warn(`[panToAverage] Skipping invalid coordinate pair at index ${i}:`, CONTEXT, coordinates[i]);
     }
   }
 
   if (validCoordsCount === 0) {
-    console.warn("[panToAverage] No valid coordinates found, cannot calculate average.");
+    Logger.warn("[panToAverage] No valid coordinates found, cannot calculate average.", CONTEXT);
     return; 
   }
 
   const avgLongitude = sumLong / validCoordsCount;
   const avgLatitude = sumLat / validCoordsCount;
-  console.log(`[panToAverage] Calculated average LngLat: [${avgLongitude}, ${avgLatitude}]`);
+  Logger.debug(`[panToAverage] Calculated average LngLat: [${avgLongitude}, ${avgLatitude}]`, CONTEXT);
 
-  const arrowImg = document.getElementById("arrow-img");
-  const consoleElement = document.getElementById("console");
-  const flipped = arrowImg ? !arrowImg.classList.contains("flipped") : true; // Default to true if arrowImg not found
-  const padding = {};
-  const currentWidth = consoleElement ? consoleElement.clientWidth - 200 : 0;
-  padding["left"] = flipped ? 0 : currentWidth;
-
-  console.log("[panToAverage] Easing map to average coordinates...");
+  Logger.debug("[panToAverage] Easing map to average coordinates...", CONTEXT);
   map.easeTo({
-    padding: padding,
     center: [avgLongitude, avgLatitude],
-    zoom: 6.5,
+    zoom: 6.5, // Consider if zoom needs adjustment based on data bounds
+    duration: 800 // Adjusted duration slightly
   });
 }
-
-// Initial state of map, also ensures points stay the same when style changes
-map.on("style.load", () => {
-  const map = getState("map");
-  if (!map) return;
-
-  map.resize();
-  console.log("Map resized");
-
-  const currentGeoJSON = getState("currentGeoJSON");
-  const currentInterpolation = getState("currentInterpolation");
-
-  if (currentGeoJSON) updateMapData(currentGeoJSON);
-  if (currentInterpolation) updateInterpolation(currentInterpolation);
-});
 
 // Obtain list of all coordinates from geoJSON
 function extractCoordinatesFromGeoJSON(geoJSON) {
@@ -348,9 +361,6 @@ let clickedPoint = false;
 let stateCAM = false;
 
 // Initialize UI elements
-const idDisplay = document.getElementById("pointID");
-const timeDisplay = document.getElementById("pointTimestamp");
-const imageDisplay = document.getElementById("pointImage");
 const chart = newChart();
 setState('chart', chart); // Store chart instance in state
 
@@ -385,199 +395,126 @@ map.on("click", "latestLayer", (event) => {
   const features = map.queryRenderedFeatures(event.point, {
     layers: ["latestLayer"],
   });
-  let coordinate = features[0].geometry.coordinates;
-  scrollToBottom();
+  if (!features.length) return; // No features clicked
 
-  if (clickedPoint) {
-    const currentClickedPoint = getState("clickedPointValues");
-    if (currentClickedPoint) {
-      map.setFeatureState(
-        { source: "latestSource", id: currentClickedPoint.specificID },
-        { hover: false },
-      );
-    }
+  const feature = features[0];
+  const coordinate = feature.geometry.coordinates;
+  // scrollToBottom(); // REMOVED - UI concern, should be handled elsewhere if needed
+
+  // Unset hover state for previously clicked point
+  const previouslyClicked = getState("clickedPointValues");
+  if (previouslyClicked && previouslyClicked.specificID) {
+    map.setFeatureState(
+      { source: "latestSource", id: previouslyClicked.specificID },
+      { hover: false }, 
+    );
   }
 
-  const arrowImg = document.getElementById("arrow-img");
-  const flipped = !arrowImg.classList.contains("flipped");
-  const padding = {};
-  const currentWidth = document.getElementById("console").clientWidth - 200;
-  padding["left"] = flipped ? 0 : currentWidth;
-
-  map.easeTo({
-    center: coordinate,
-    padding: padding,
-    duration: 600,
+  // Ease map view - REMOVED padding calculation and map.easeTo related to console state
+  // Panning/zooming on click might be desired, but console-aware padding is a UI concern.
+  // Simple centering can be done if needed:
+  map.easeTo({ 
+      center: coordinate,
+      zoom: Math.max(map.getZoom(), 10), // Zoom in slightly if zoomed out
+      duration: 600
   });
 
-  clickedPoint = true;
+  clickedPoint = true; // Keep track locally if needed, though state drives UI
 
-  // Define how values are interpreted
-  const feature = event.features[0];
+  // Prepare data object for state update
   const eventProperties = feature.properties;
-  const imgControls = document.getElementById("img-buttons");
-  const angleSelect = document.getElementById("angle-select");
-  console.log("[Click] Feature Properties (Raw):", eventProperties);
+  Logger.debug("[Click] Feature Properties (Raw):", CONTEXT, eventProperties);
 
-  let newClickedPointValues;
-  let classData; // To hold the class object for addData
-  let imageUrl; // To hold the image URL
+  let newClickedPointValues = null;
+  let imageUrl = null;
+  let classData = {};
   
-  if (eventProperties.type === "AVL") {
-    console.log("[Click] AVL point clicked.");
-    imageUrl = eventProperties.image;
-    
-    if (typeof eventProperties.classes === 'string') {
-        try {
-            classData = JSON.parse(eventProperties.classes);
-            console.log("[Click] Parsed AVL classes data.");
-        } catch (e) {
-            console.error("[Click] Error parsing AVL classes data:", e, "Raw data:", eventProperties.classes);
-            classData = {};
-        }
-    } else if (typeof eventProperties.classes === 'object' && eventProperties.classes !== null) {
-        classData = eventProperties.classes;
-    } else {
-        console.warn("[Click] AVL classes data is not a string or object:", eventProperties.classes);
-        classData = {};
-    }
-    
-    newClickedPointValues = {
-      specificID: feature.id,
-      avlID: eventProperties.id, 
-      timestamp: timestampToISOString(eventProperties.timestamp),
-      classification: eventProperties.classification,
-      classes: classData,
-      image: imageUrl,
-      CAM: false,
-      type: eventProperties.type,
-      angles: null,
-      currentAngle: null
-    };
-    imgControls.style.display = "none";
-    imageDisplay.removeEventListener('click', toggleImageSrc);
-    if (angleSelect) { angleSelect.innerHTML = '<option value="" disabled>Angle</option>'; angleSelect.disabled = true; }
-    
-    // Explicitly update image display for AVL
-    if (imageUrl) {
-        imageDisplay.src = imageUrl;
-        imageDisplay.parentNode.style.display = "block";
-    } else {
-        imageDisplay.src = ""; 
-        imageDisplay.parentNode.style.display = "none";
-    }
-    
-  } else if (eventProperties.type === "RWIS") {
-    console.log("[Click] RWIS point clicked.");
-    imgControls.style.display = "flex";
-    stateCAM = true; // Enable CAM toggling for RWIS
-    
-    const recentAngle = eventProperties.recentAngle;
-    let anglesObject = {}; // Store the full parsed angles object
-    let anglesString = eventProperties.angles;
-    
-    if (typeof anglesString === 'string') {
-        try {
-            anglesObject = JSON.parse(anglesString);
-             console.log("[Click] Parsed RWIS angles data.");
-        } catch (e) {
-            console.error("[Click] Error parsing RWIS angles data:", e, "Raw data:", anglesString);
-            anglesObject = {}; // Default to empty if parse fails
-        }
-    }
-    
-    let initialAngle = recentAngle;
-    // If recentAngle is invalid or not in parsed object, pick the first available angle
-    if (!initialAngle || !anglesObject[initialAngle]) {
-        const availableKeys = Object.keys(anglesObject).sort();
-        if (availableKeys.length > 0) {
-            initialAngle = availableKeys[0];
-            console.warn(`[Click] Recent angle '${recentAngle}' not found or invalid. Using first available angle: '${initialAngle}'`);
-        } else {
-             console.error("[Click] No valid angles found in angles data.");
-             initialAngle = null; // No valid angle to display
-        }
-    }
+  try { // Process properties and set newClickedPointValues 
+     if (eventProperties.type === "AVL") {
+          imageUrl = eventProperties.image;
+          // Safely parse classes
+          if (typeof eventProperties.classes === 'string') {
+              try { classData = JSON.parse(eventProperties.classes); } catch (e) { 
+                  Logger.warn("[Click] Failed to parse AVL classes data", CONTEXT, { raw: eventProperties.classes, error: e });
+                  classData = {}; 
+              }
+          } else if (typeof eventProperties.classes === 'object' && eventProperties.classes !== null) {
+              classData = eventProperties.classes;
+          } else {
+               Logger.warn("[Click] AVL classes data is not a string or object", CONTEXT, { raw: eventProperties.classes });
+               classData = {};
+          }
+          
+          newClickedPointValues = {
+              type: eventProperties.type,
+              specificID: feature.id, 
+              avlID: eventProperties.id, // Use original AVL ID here
+              timestamp: timestampToISOString(eventProperties.timestamp), // Format timestamp
+              classification: eventProperties.classification,
+              classes: classData,
+              image: imageUrl,
+              CAM: false, // AVL cannot have CAM view
+              angles: null,
+              currentAngle: null
+          };
 
-    const initialAngleData = initialAngle ? anglesObject[initialAngle] : {};
-    imageUrl = initialAngleData.url; // Use initial angle image
-    classData = initialAngleData.class; // Use initial angle class data
+      } else if (eventProperties.type === "RWIS") {
+          let anglesObject = {};
+          if (typeof eventProperties.angles === 'string') {
+              try { anglesObject = JSON.parse(eventProperties.angles); } catch (e) { 
+                   Logger.error("[Click] Failed to parse RWIS angles data", CONTEXT, { raw: eventProperties.angles, error: e });
+                   anglesObject = {}; 
+              }
+          }
+          
+          const recentAngle = eventProperties.recentAngle;
+          let initialAngle = recentAngle;
+          
+          if (!initialAngle || !anglesObject[initialAngle]) {
+              const availableKeys = Object.keys(anglesObject).sort();
+              if (availableKeys.length > 0) {
+                  initialAngle = availableKeys[0];
+                  Logger.warn(`[Click] Recent angle '${recentAngle}' invalid. Using first available: '${initialAngle}'`, CONTEXT);
+              } else {
+                  Logger.error("[Click] No valid angles found in RWIS data.", CONTEXT, { angles: anglesObject });
+                  initialAngle = null;
+              }
+          }
 
-    // Populate selector with all angles, selecting the initial one
-    populateAngleSelector(anglesObject, initialAngle);
-    
-    // Set state including all angles and the current one
-    setState("clickedPointValues", {
-        type: eventProperties.type,
-        specificID: feature.id,
-        avlID: eventProperties.id, 
-        timestamp: timestampToISOString(eventProperties.timestamp),
-        classification: initialAngleData.classification, // Use initial classification
-        classes: classData, // Use initial class data
-        image: imageUrl, // Use initial image url
-        CAM: false, 
-        angles: anglesObject, // Store all angle data
-        currentAngle: initialAngle // Store the currently displayed angle key
-    });
-    setState('imageAspectRatio', null); // Clear aspect ratio initially
+          const initialAngleData = initialAngle ? anglesObject[initialAngle] : {};
+          imageUrl = initialAngleData.url; // Use initial angle image
+          classData = initialAngleData.class; // Use initial angle class data
 
-    // Update image display and add listener for RWIS
-    if (imageUrl) {
-        imageDisplay.src = imageUrl;
-        imageDisplay.parentNode.style.display = "block";
-        
-        // Add onload listener to capture aspect ratio
-        imageDisplay.onload = () => {
-            const aspectRatio = imageDisplay.naturalWidth / imageDisplay.naturalHeight;
-            if (aspectRatio && isFinite(aspectRatio)) {
-                console.log(`[Click] Original image aspect ratio: ${aspectRatio}`);
-                setState('imageAspectRatio', aspectRatio);
-                imageDisplay.style.aspectRatio = aspectRatio; // Apply immediately
-            } else {
-                 setState('imageAspectRatio', null);
-                 imageDisplay.style.aspectRatio = ''; // Clear if invalid
-            }
-            imageDisplay.onload = null; // Remove listener after execution
-        };
-        imageDisplay.onerror = () => { // Handle image load errors
-             setState('imageAspectRatio', null);
-             imageDisplay.style.aspectRatio = '';
-             imageDisplay.onerror = null;
-             imageDisplay.onload = null;
-        }
+          newClickedPointValues = {
+              type: eventProperties.type,
+              specificID: feature.id,
+              avlID: eventProperties.id, // Use original RWIS ID here
+              timestamp: timestampToISOString(eventProperties.timestamp),
+              classification: initialAngleData.classification,
+              classes: classData,
+              image: imageUrl,
+              CAM: false, // Initial CAM state is false
+              angles: anglesObject,
+              currentAngle: initialAngle
+          };
+          // Reset aspect ratio state when a new RWIS point is clicked
+          setState('imageAspectRatio', null); 
 
-        imageDisplay.removeEventListener('click', toggleImageSrc); 
-        imageDisplay.addEventListener('click', toggleImageSrc); 
-    } else {
-        imageDisplay.src = ""; 
-        imageDisplay.parentNode.style.display = "none";
-        imageDisplay.removeEventListener('click', toggleImageSrc);
-        setState('imageAspectRatio', null); // Clear aspect ratio if no image
-        imageDisplay.style.aspectRatio = '';
-    }
-  } else {
-    console.error("[Click] Unknown feature type:", eventProperties.type);
-    imgControls.style.display = "none";
-    if (angleSelect) { angleSelect.innerHTML = '<option value="" disabled>Angle</option>'; angleSelect.disabled = true; }
-    imageDisplay.removeEventListener('click', toggleImageSrc);
-    setState("clickedPointValues", null);
-    setState('imageAspectRatio', null); // Clear aspect ratio for non-RWIS
-    imageDisplay.style.aspectRatio = '';
-    return; 
+      } else {
+          Logger.error("Unknown feature type clicked:", CONTEXT, eventProperties.type);
+          setState("clickedPointValues", null); // Clear state on unknown type
+          return; 
+      }
+
+      // Update the central state
+      Logger.debug("Setting clickedPointValues state with:", CONTEXT, newClickedPointValues);
+      setState("clickedPointValues", newClickedPointValues);
+
+  } catch (processingError) {
+      Logger.error("Error processing clicked feature properties", CONTEXT, processingError);
+      setState("clickedPointValues", null); // Clear state on error
   }
 
-  // Update text content (common)
-  idDisplay.textContent = getState("clickedPointValues")?.avlID || '';
-  timeDisplay.textContent = getState("clickedPointValues")?.timestamp || '';
-  
-  // Update chart (common)
-  removeData(chart);
-  if (classData) {
-      console.log("[Click] Updating chart with data:", classData);
-      addData(chart, classData); 
-  } else {
-      console.warn("[Click] Class data is undefined, cannot update chart.");
-  }
 });
 
 function timestampToISOString(timestamp) {
@@ -586,7 +523,6 @@ function timestampToISOString(timestamp) {
   return formattedDateTime;
 }
 
-// Remove this function if not working properly
 map.on("mousemove", "latestLayer", (event) => {
   const map = getState("map");
   if (!map) return;
@@ -597,31 +533,27 @@ map.on("mousemove", "latestLayer", (event) => {
     layers: ["latestLayer"],
   });
 
-  // Check if any features are hovered
   if (features.length > 0) {
     const hoveredFeature = features[0];
     const hoveredFeatureId = hoveredFeature.id;
 
-    // Update feature state for hover effect (regardless of whether it's the same feature)
-    // Clear previous hover state if the feature ID has changed
+    // Update feature state for hover effect
     if (uniqueID && uniqueID !== hoveredFeatureId) {
        map.setFeatureState(
           { source: "latestSource", id: uniqueID },
           { hover: false },
         );
     }
-    // Set hover state for the current feature
     map.setFeatureState(
       { source: "latestSource", id: hoveredFeatureId },
       { hover: true },
     );
-    uniqueID = hoveredFeatureId; // Update the tracked hovered ID
+    uniqueID = hoveredFeatureId;
     
-    // --- Replace side panel update with Popup --- 
+    // --- Popup logic --- 
     const properties = hoveredFeature.properties;
     const coordinates = hoveredFeature.geometry.coordinates.slice();
     
-    // Get image URL for preview (use base image for RWIS)
     let previewImageUrl = null;
     if (properties.type === "RWIS") {
         let angles = properties.angles;
@@ -645,18 +577,12 @@ map.on("mousemove", "latestLayer", (event) => {
       </div>
     `;
 
-    // Ensure coordinates are valid
     while (Math.abs(event.lngLat.lng - coordinates[0]) > 180) {
       coordinates[0] += event.lngLat.lng > coordinates[0] ? 360 : -360;
     }
     
-    // Remove existing popup if it exists
-    if (hoverPopup) {
-      hoverPopup.remove();
-      hoverPopup = null;
-    }
+    if (hoverPopup) hoverPopup.remove();
     
-    // Create and show the new popup
     hoverPopup = new mapboxgl.Popup({ 
       closeButton: false,
       closeOnClick: false,
@@ -666,22 +592,17 @@ map.on("mousemove", "latestLayer", (event) => {
       .setHTML(popupContent)
       .addTo(map);
 
-    // --- Remove side panel update logic --- 
-    // // Don't update clickedPointValues state if a point is already clicked
-    // if (clickedPoint) return;
-    // // Update UI with the hovered feature's information
-    // idDisplay.textContent = properties.id;
-    // timeDisplay.textContent = timestampToISOString(properties.timestamp);
-    // // ... (logic for imageUrl, classData, setState, addData, imageDisplay updates removed)
+    // --- REMOVED side panel update logic --- 
+    // // if (clickedPoint) return;
+    // // idDisplay.textContent = properties.id;
+    // // ... 
 
   } else {
-    // If no features are hovered, reset cursor and remove popup
     map.getCanvas().style.cursor = "default";
     if (hoverPopup) {
       hoverPopup.remove();
       hoverPopup = null;
     }
-    // Clear feature state for the previously hovered feature if mouse moves off features entirely
     if (uniqueID !== null) {
       map.setFeatureState(
         { source: "latestSource", id: uniqueID },
@@ -689,64 +610,9 @@ map.on("mousemove", "latestLayer", (event) => {
       );
       uniqueID = null;
     }
-    // --- Remove side panel clearing logic --- 
-    // // Only clear UI if no point is clicked
-    // if (!clickedPoint) { ... }
+    // --- REMOVED side panel clearing logic --- 
+    // // if (!clickedPoint) { ... }
   }
-});
-
-// Function to shift/zoom the map view based on changes in container width (thank you chatgpt)
-function shiftMapView() {
-  const currentCenter = map.getCenter();
-  let currentZoom = map.getZoom();
-
-  const containerWidth = document.getElementById("console").offsetWidth;
-
-  // Check if the container width has changed
-  if (containerWidth !== prevContainerWidth) {
-    const widthChange = containerWidth - prevContainerWidth;
-
-    // Calculate the relative change in container width
-    const widthRatio = prevContainerWidth / containerWidth;
-
-    // Calculate the new zoom level based on the relative change in width
-    currentZoom *= widthRatio ** 0.1; // Adjust this value if you want more extreme zooms
-
-    // Project current center to screen coordinates
-    const currentScreenPoint = map.project(currentCenter);
-
-    // Calculate new screen coordinates based on the change in container width
-    const newScreenX = currentScreenPoint.x - widthChange * 0.7;
-    const newScreenY = currentScreenPoint.y;
-
-    // Unproject new screen coordinates back to geographical coordinates
-    const newCenter = map.unproject([newScreenX, newScreenY]);
-
-    map.setCenter(newCenter);
-    map.setZoom(currentZoom);
-    prevContainerWidth = containerWidth;
-  }
-}
-
-// Wait till elements are loaded before recording container width
-let prevContainerWidth;
-setTimeout(() => {
-  prevContainerWidth = document.getElementById("console").offsetWidth;
-}, 1000);
-
-let isMouseDown = false;
-window.addEventListener("mousedown", (event) => {
-  if (event.target.id === "console") {
-    isMouseDown = true;
-  }
-});
-window.addEventListener("mousemove", () => {
-  if (isMouseDown) {
-    shiftMapView();
-  }
-});
-window.addEventListener("mouseup", () => {
-  isMouseDown = false;
 });
 
 // Handle specific realtime functionalities:
@@ -757,36 +623,40 @@ function convertUnixTimestamp(unixTimestamp) {
   });
 }
 
-// Handle realtime toggle
-const realtimeToggle = document.querySelector("#realtime-toggle");
-realtimeToggle.addEventListener("change", (e) => {
-  if (e.target.checked) {
-    // Init GL JS Rain Layer
-    const rainLayer = new RainLayer({
-      id: "rain",
-      source: "rainviewer",
-      meshOpacity: 0,
-      rainColor: "hsla(213, 76%, 73%, 0.86)",
-      snowColor: "hsla(0, 0%, 100%, 1)",
-      scale: "noaa",
-    });
-    map.addLayer(rainLayer);
+// Handle realtime toggle - Listener kept in webInteractions.js for now
+// But the layer adding/removing logic happens here based on map instance
+// This might be better handled via state subscription if complexity grows.
+subscribe('realtimeState', (isRealtime) => {
+  const map = getState('map');
+  if (!map) return;
 
-    rainLayer.on("refresh", (data) => {
-      console.log(
-        `Last Weather Update: ${convertUnixTimestamp(data.timestamp)}`,
-      );
-    });
-
-    // remove existing geoJSON source
-    map.removeLayer("latestLayer");
-    map.removeSource("latestSource");
-    // TODO: Add realtime source and logic
-
-    // console.log('checked')
+  if (isRealtime) {
+      Logger.info("Adding RainLayer due to realtime state change.", CONTEXT);
+      if (!map.getLayer("rain")) { // Prevent adding multiple times
+        const rainLayer = new RainLayer({ /* ... options ... */ });
+        map.addLayer(rainLayer);
+        rainLayer.on("refresh", (data) => {
+            Logger.debug(`Weather data refreshed: ${convertUnixTimestamp(data.timestamp)}`, CONTEXT);
+        });
+      }
+      // If there's a realtime data source separate from rain, handle it here.
+      // Currently, it seems tied to removing/adding latestLayer?
+      // Consider a dedicated realtime data state.
+      if (map.getLayer("latestLayer")) map.removeLayer("latestLayer");
+      if (map.getSource("latestSource")) map.removeSource("latestSource");
+      // TODO: Add realtime data source and layer setup
   } else {
-    // console.log('unchecked')
-    map.removeLayer("rain");
+      Logger.info("Removing RainLayer due to realtime state change.", CONTEXT);
+      if (map.getLayer("rain")) {
+          map.removeLayer("rain");
+          // rainLayer instance might need to be stored to remove listeners properly
+      }
+      // Re-add the latestLayer/Source if it was removed
+      const currentGeoJSON = getState("currentGeoJSON");
+      if (currentGeoJSON && !map.getSource("latestSource")) {
+          Logger.debug("Re-adding latestSource/latestLayer after realtime disabled.", CONTEXT);
+          addPointLayer(currentGeoJSON); 
+      }
   }
 });
 
@@ -850,8 +720,11 @@ map.on("idle", () => {
   }
 });
 
-// Export map instance and functions
-export { map };
-
 // Export functions at the end
-export { updateMapData, updateInterpolation };
+export { 
+    updateMapData, 
+    updateInterpolation, 
+    panToAverage, 
+    // Removed shiftMapView
+    // Removed convertUnixTimestamp if only used locally for rain layer?
+};

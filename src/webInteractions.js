@@ -39,8 +39,20 @@ import {
   toggleConsole, 
   toggleArrow, 
   scrollToBottom,
-  setupEventListeners
+  setupEventListeners,
+  initializeUI
 } from "./core/ui/uiInteractions.js";
+
+import Logger from './core/logger.js';
+import {
+    mesonetGETAVL,
+    mesonetScrapeRWISv2,
+    triggerBackendStartup,
+    postRequestToBackend,
+    fetchNikFileList,
+    fetchNikGeoJson
+} from './core/apiService.js';
+const CONTEXT = 'WebInteractions'; // Define context for logging
 
 // Initialize state subscriptions
 subscribe("map", (newMap) => {
@@ -48,24 +60,52 @@ subscribe("map", (newMap) => {
 });
 
 // Initialize event listeners
-document.addEventListener('DOMContentLoaded', setupEventListeners);
+document.addEventListener('DOMContentLoaded', async (event) => {
+  // Initialize all UI interactions and subscriptions
+  initializeUI(); 
+
+  Logger.info("Webpage loaded, initializing backend warmup and NIK list...", CONTEXT);
+  
+  // Trigger backend warmup (moved from potentially global scope)
+  try {
+    await triggerBackendStartup();
+    Logger.info("Backend warmup request sent.", CONTEXT);
+  } catch (error) {
+    Logger.error("Error triggering backend warmup:", CONTEXT, error);
+  }
+
+  // Fetch initial NIK file list (moved from potentially global scope)
+  try {
+    const nikFiles = await fetchNikFileList();
+    // Assuming populateNikDropdown is part of initializeUI or uiInteractions
+    // populateNikDropdown(nikFiles); 
+    Logger.info("Initial NIK file list fetched.", CONTEXT, { count: nikFiles?.length });
+  } catch (error) {
+    Logger.error("Error fetching initial NIK file list:", CONTEXT, error);
+  }
+});
 
 // Export function for use in other modules
 export { scrollToBottom };
 
 // Handle study area toggle
 const studyAreaToggle = document.querySelector("#studyarea-toggle");
-studyAreaToggle.addEventListener("change", async (e) => {
-  console.log("Study area toggle changed:", e.target.checked);
-  setState("studyAreaState", e.target.checked);
-  
-  // Refresh the map data if we have current GeoJSON
-  const currentGeoJSON = getState("currentGeoJSON");
-  if (currentGeoJSON) {
-    console.log("Refreshing map data with studyAreaState:", e.target.checked);
-    updateMapData(currentGeoJSON);
-  }
-});
+if (studyAreaToggle) { // Add null check
+  studyAreaToggle.addEventListener("change", async (e) => {
+    Logger.debug("Study area toggle changed:", CONTEXT, { checked: e.target.checked });
+    setState("studyAreaState", e.target.checked);
+    
+    // Refresh the map data by updating state, mapInteractions should subscribe
+    const currentGeoJSON = getState("currentGeoJSON");
+    if (currentGeoJSON) {
+      Logger.debug("Triggering map data update via state change.", CONTEXT);
+      // Re-setting the state triggers subscribers like updateMapData
+      setState("currentGeoJSON", currentGeoJSON); 
+    }
+  });
+} else {
+  Logger.warn("Study area toggle element not found.", CONTEXT);
+}
 
 // Handle realtime toggle
 const realtimeToggle = document.querySelector("#realtime-toggle");
@@ -73,264 +113,184 @@ const archivedQuery = document.querySelectorAll(".archived-query");
 let realtimeState = false;
 let realtimeIntervalId = null; // Variable to hold the interval ID
 
-realtimeToggle.addEventListener("change", (e) => {
-  realtimeState = e.target.checked;
-  setState("realtimeState", realtimeState); // Update global state
-  
-  archivedQuery.forEach((query) => {
-    query.style.display = realtimeState ? "none" : "flex";
-  });
-  
-  if (realtimeState) {
-    console.log("Realtime Mode ENABLED");
-    // Clear any existing interval just in case
-    if (realtimeIntervalId) {
-      clearInterval(realtimeIntervalId);
-    }
-    // Update immediately and start interval
-    updateRealtimeData(); 
-    realtimeIntervalId = setInterval(updateRealtimeData, 40000); // 40 seconds
-  } else {
-    console.log("Realtime Mode DISABLED");
-    // Clear the interval when toggling off
-    if (realtimeIntervalId) {
-      clearInterval(realtimeIntervalId);
-      realtimeIntervalId = null;
-      console.log("Realtime update interval cleared.");
-    }
-    // Optionally: Add logic here to revert map to last archived query state if desired
-  }
-});
-
-// Handle console shift toggle button
-document.getElementById("shift-button").addEventListener("click", function () {
-  document.getElementById("console").classList.toggle("shifted");
-  document.getElementById("shift-button").classList.toggle("shifted");
-  var arrowImg = document.getElementById("arrow-img");
-  const flipped = arrowImg.classList.toggle("flipped");
-  const padding = {};
-  let currentWidth = document.getElementById("console").clientWidth;
-  padding["right"] = flipped ? 0 : currentWidth;
-  if (map) {
-    map.easeTo({
-      padding: padding,
-      duration: 1000,
+if (realtimeToggle) { // Add null check
+  realtimeToggle.addEventListener("change", (e) => {
+    realtimeState = e.target.checked;
+    setState("realtimeState", realtimeState); // Update global state
+    
+    archivedQuery.forEach((query) => {
+      if (query && query.style) { // Add null checks
+        query.style.display = realtimeState ? "none" : "flex";
+      }
     });
-  }
-});
+    
+    if (realtimeState) {
+      Logger.info("Realtime Mode ENABLED", CONTEXT);
+      if (realtimeIntervalId) clearInterval(realtimeIntervalId);
+      updateRealtimeData(); 
+      realtimeIntervalId = setInterval(updateRealtimeData, 40000); // 40 seconds
+    } else {
+      Logger.info("Realtime Mode DISABLED", CONTEXT);
+      if (realtimeIntervalId) {
+        clearInterval(realtimeIntervalId);
+        realtimeIntervalId = null;
+        Logger.debug("Realtime update interval cleared.", CONTEXT);
+      }
+    }
+  });
+} else {
+  Logger.warn("Realtime toggle element not found.", CONTEXT);
+}
 
 // Handle range slider value change visual
 const slider = document.getElementById("time-range");
 const sliderValue = document.getElementById("slider-value");
-let currentRange = 0;
-slider.addEventListener("input", function () {
-  sliderValue.textContent = this.value;
-  currentRange = this.value;
-  console.log(currentRange);
-});
 
-// Handle image click to view// handHandle RWIS data
-// Check if caLogic to gobtain lbmost recent image for specific said angleeach angle
-/*
-document.addEventListener("DOMContentLoaded", function () {
-  let imageElement = document.getElementById("pointImage");
-
-  function toggleImageSrc() {
-    // Get the latest clickedPointValues from state
-    const clickedPointValues = getState("clickedPointValues");
-    if (!clickedPointValues) return;
-    
-    let img1 = clickedPointValues.image;
-    if (!clickedPointValues.CAM && clickedPointValues.type == "RWIS") {
-      // let img2 = `./assets/gradcamimages/Grad-CAM_${img1.split("/").pop()}`;
-      // https://storage.googleapis.com/rwis_cam_images/images/IDOT-048-04_201901121508.jpg_gradcam.png
-      // Grad-CAM_IDOT-026-01_201901121420.jpg
-
-      console.log("Toggling to GradCAM image");
-      console.log("Original image:", img1);
-      let img2 = `https://storage.googleapis.com/rwis_cam_images/images/${img1.split("/").pop()}_gradcam.png`;
-      console.log("GradCAM image URL:", img2);
-
-      imageElement.src = img2;
-      // Update the state with the new CAM value
-      setState("clickedPointValues", { ...clickedPointValues, CAM: true });
-    } else {
-      console.log("Toggling back to original image");
-      imageElement.src = img1;
-      // Update the state with the new CAM value
-      setState("clickedPointValues", { ...clickedPointValues, CAM: false });
-    }
-  }
-
-  imageElement.addEventListener("click", toggleImageSrc);
-});
-*/
+if (slider && sliderValue) { // Add null checks
+  slider.addEventListener("input", function () {
+    sliderValue.textContent = this.value;
+    // Set state instead of using a local variable
+    setState('timeRange', parseInt(this.value, 10)); 
+    Logger.debug("Time range slider changed:", CONTEXT, { value: this.value });
+  });
+  // Initialize display and state
+  const initialValue = slider.value;
+  sliderValue.textContent = initialValue;
+  setState('timeRange', parseInt(initialValue, 10));
+} else {
+   Logger.warn("Time range slider or value display element not found.", CONTEXT);
+}
 
 async function startQuery(date, window) {
-  console.log(`[Start Query] Date: ${date}, Window: ${window}`);
-  enableLoadingScreen(); // Show loading for initial fetch
+  Logger.debug(`Starting query process`, CONTEXT, { date, window });
+  enableLoadingScreen();
   let imageQueryAVL, imageQueryRWIS;
   try {
       const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
-      console.log(`[Start Query] Calculated Range: ${startTimestamp.toISOString()} to ${endTimestamp.toISOString()}`);
+      Logger.debug(`Calculated query range`, CONTEXT, { start: startTimestamp.toISOString(), end: endTimestamp.toISOString() });
       
       // === Step 1: Initial Firebase Fetch ===
       [imageQueryAVL, imageQueryRWIS] = await queryImagesByDateRange(
           startTimestamp,
           endTimestamp,
       );
-      console.log(`[Start Query] Initial Firebase results - AVL: ${imageQueryAVL?.length || 0}, RWIS: ${imageQueryRWIS?.length || 0}`);
+      Logger.info(`Initial Firebase query results`, CONTEXT, { avl: imageQueryAVL?.length ?? 0, rwis: imageQueryRWIS?.length ?? 0 });
 
       // === Step 2: Initial Map Update ===
-      console.log("[Start Query] Updating map with initial data...");
-      updateAll(imageQueryAVL, imageQueryRWIS); // Display existing data immediately
-      console.log("[Start Query] Initial map update complete.");
+      Logger.debug("Updating map with initial data...", CONTEXT);
+      updateAll(imageQueryAVL, imageQueryRWIS); // updateAll remains here as it orchestrates map/interpolation updates
+      Logger.debug("Initial map update complete.", CONTEXT);
 
   } catch (error) {
-      console.error("[Start Query] Error during initial fetch or update:", error);
+      Logger.error(`Error during initial fetch or map update: ${error.message}`, CONTEXT, error);
       // Optionally show error to user
   } finally {
-      fadeOutLoadingScreen(); // Hide loading after initial display
-  }
+      fadeOutLoadingScreen();
+  } 
 
   // === Step 3: Handle Predictions Asynchronously ===
-  // Don't await this, let it run in the background
-  checkAndTriggerPredictions(date, window, imageQueryAVL, imageQueryRWIS);
+  // This function now uses API service calls internally
+  checkAndTriggerPredictions(date, window, imageQueryAVL, imageQueryRWIS)
+      .then(() => Logger.info("Background prediction check process completed.", CONTEXT))
+      .catch(error => Logger.error(`Background prediction check process failed: ${error.message}`, CONTEXT, error));
   
-  console.log("[Start Query] Initial processing complete. Prediction checks running in background.");
+  Logger.debug("Initial query processing complete. Prediction checks running in background.", CONTEXT);
 }
 
 async function checkAndTriggerPredictions(date, window, initialAvlData, initialRwisData) {
-    console.log("[Predictions Check] Starting background prediction checks...");
+    Logger.debug("Starting background prediction checks...", CONTEXT);
     try {
-        const [startTimestamp, endTimestamp] = calculateDataRange(date, window); // Recalculate if needed
+        const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
         let predictionsSent = false;
         const predictionPromises = [];
 
-        // --- Fetch Mesonet Data --- 
-        console.log("[Predictions Check] Fetching Mesonet AVL data...");
-        const actualImagesAVL = await mesonetGETAVL(date, window);
-        console.log(`[Predictions Check] Mesonet AVL results: ${actualImagesAVL?.data?.length || 0}`);
+        // --- Fetch Mesonet Data (Use ApiService) --- 
+        Logger.debug("Fetching Mesonet AVL data via ApiService...", CONTEXT);
+        const actualImagesAVL = await mesonetGETAVL(date, window); // Uses imported function
+        Logger.debug(`Mesonet AVL results received`, CONTEXT, { count: actualImagesAVL?.data?.length ?? 0 });
 
-        console.log("[Predictions Check] Fetching Mesonet RWIS data...");
-        const actualImagesRWIS = await mesonetScrapeRWISv2(
+        Logger.debug("Fetching Mesonet RWIS data via ApiService...", CONTEXT);
+        const actualImagesRWIS = await mesonetScrapeRWISv2( // Uses imported function
             startTimestamp,
             endTimestamp,
         );
-        console.log(`[Predictions Check] Mesonet RWIS results: ${actualImagesRWIS?.length || 0}`);
+         Logger.debug(`Mesonet RWIS scrape results received`, CONTEXT, { count: actualImagesRWIS?.length ?? 0 });
 
-        // --- Check for Missing Predictions --- 
-        console.log("[Predictions Check] Checking for missing RWIS predictions...");
+        // --- Check for Missing Predictions (Logic stays here) ---
+        Logger.debug("Checking for missing RWIS predictions...", CONTEXT);
         const imagesForPredRWIS = predictionExistsRWIS(
             actualImagesRWIS,
-            initialRwisData, // Use initial firebase data for comparison
+            initialRwisData, 
         );
-        console.log(`[Predictions Check] Found ${Object.keys(imagesForPredRWIS || {}).length} RWIS images needing prediction.`);
+        Logger.debug(`RWIS images needing prediction: ${Object.keys(imagesForPredRWIS || {}).length}`, CONTEXT);
         
-        console.log("[Predictions Check] Checking for missing AVL predictions...");
+        Logger.debug("Checking for missing AVL predictions...", CONTEXT);
         const imagesForPredAVL = predictionExistsAVL(
             actualImagesAVL, 
-            initialAvlData // Use initial firebase data for comparison
+            initialAvlData
         );
-        console.log(`[Predictions Check] Found ${Object.keys(imagesForPredAVL || {}).length} AVL images needing prediction.`);
+         Logger.debug(`AVL images needing prediction: ${Object.keys(imagesForPredAVL || {}).length}`, CONTEXT);
 
-        // --- Send Prediction Requests (if needed) --- 
+        // --- Send Prediction Requests (Use ApiService potentially, or keep logic here) ---
+        // Current implementation uses postRequestToBackend which we moved to apiService
+        // Assuming sendPredictionsAVL/RWIS wrap the call to postRequestToBackend
         if (imagesForPredAVL) {
-            console.log("[Predictions Check] Sending AVL prediction request...");
-            predictionPromises.push(sendPredictionsAVL(imagesForPredAVL, date, window));
+            Logger.debug("Sending AVL prediction request...", CONTEXT);
+            // Assume sendPredictionsAVL calls apiService.postRequestToBackend internally
+            predictionPromises.push(sendPredictionsAVL(imagesForPredAVL, date, window)); 
             predictionsSent = true;
         } else {
-            console.log("[Predictions Check] No AVL predictions needed.");
+            Logger.debug("No AVL predictions needed.", CONTEXT);
         }
 
         if (imagesForPredRWIS) {
-            console.log("[Predictions Check] Sending RWIS prediction request...");
+            Logger.debug("Sending RWIS prediction request...", CONTEXT);
+             // Assume sendPredictionsRWIS calls apiService.postRequestToBackend internally
             predictionPromises.push(sendPredictionsRWIS(imagesForPredRWIS, date, window));
             predictionsSent = true;
         } else {
-            console.log("[Predictions Check] No RWIS predictions needed.");
+            Logger.debug("No RWIS predictions needed.", CONTEXT);
         }
 
-        // --- Wait for Predictions and Final Update (if needed) --- 
+        // --- Wait for Predictions and Final Update --- 
         if (predictionsSent) {
-            console.log("[Predictions Check] Waiting for prediction requests to complete...");
+            Logger.debug("Waiting for prediction requests...", CONTEXT);
             await Promise.all(predictionPromises);
-            console.log("[Predictions Check] Prediction requests finished. Re-querying Firebase...");
+            Logger.debug("Prediction requests finished. Re-querying Firebase...", CONTEXT);
 
-            // Final Firebase Query
+            // Final Firebase Query (Remains the same)
             const [finalAvlData, finalRwisData] = await queryImagesByDateRange(
                 startTimestamp,
                 endTimestamp,
             );
-            console.log(`[Predictions Check] Final Firebase results - AVL: ${finalAvlData?.length || 0}, RWIS: ${finalRwisData?.length || 0}`);
+            Logger.info(`Final Firebase query results`, CONTEXT, { avl: finalAvlData?.length ?? 0, rwis: finalRwisData?.length ?? 0 });
             
-            // Final Map Update
-            console.log("[Predictions Check] Updating map with final data...");
+            // Final Map Update (Remains the same)
+            Logger.debug("Updating map with final data after predictions...", CONTEXT);
             updateAll(finalAvlData, finalRwisData);
-            console.log("[Predictions Check] Final map update complete.");
+            Logger.debug("Final map update complete.", CONTEXT);
         } else {
-            console.log("[Predictions Check] No predictions were sent, no final update needed.");
+            Logger.debug("No predictions were sent, skipping final update.", CONTEXT);
         }
 
     } catch (error) {
-        console.error("[Predictions Check] Error during background prediction handling:", error);
+        // Catch errors from API calls or internal logic
+        Logger.error(`Error during background prediction handling: ${error.message}`, CONTEXT, error);
         // Optionally: update UI to indicate background task failure
     }
 }
 
-// Removed prediction sending logic from original startQuery
-// async function sendPredictionsAVL... (Now only sends request)
-// async function sendPredictionsRWIS... (Now only sends request)
-
-function chunkObject(obj, size) {
-  // Subdivide full dict to list of subdicts with length "size"
-  const chunks = [];
-  let currentChunk = {};
-
-  for (const [key, value] of Object.entries(obj)) {
-    currentChunk[key] = value;
-
-    if (Object.keys(currentChunk).length === size) {
-      chunks.push(currentChunk);
-      currentChunk = {};
-    }
-  }
-
-  if (Object.keys(currentChunk).length > 0) {
-    chunks.push(currentChunk);
-  }
-
-  return chunks;
+// Keep sendPredictionsAVL/RWIS stubs for now, assuming they call postRequestToBackend
+// TODO: Refactor these later if needed
+async function sendPredictionsAVL(images, date, window) { 
+    Logger.debug('Stub: Sending AVL predictions', CONTEXT, { count: Object.keys(images).length });
+    // Placeholder - Replace with actual logic potentially calling postRequestToBackend
+    await postRequestToBackend(images, 50, '/predict_avl'); // Example call
 }
-
-const RWIS_URL = "https://index-xmctotgaqq-uc.a.run.app";
-function postRequestToBackend(imagesForPred, chunkSize, endpoint) {
-  // console.log("Inside postRequestToBackend");
-
-  const URL = RWIS_URL + endpoint;
-  const chunks = chunkObject(imagesForPred, chunkSize);
-  // console.log("Chunked request data to be sent to backend:");
-  // const jsonString = JSON.stringify(chunks, null, 2);
-  // console.log(jsonString);
-
-  const promises = chunks.map((chunk) => {
-    // console.log(JSON.stringify(chunk, null, 2));
-    return fetch(URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(chunk),
-    }).then((response) => {
-      if (!response.ok) {
-        throw new Error("Network response was not ok " + response.statusText);
-      }
-      return response.json();
-    });
-  });
-
-  console.log("\n# of requests to backend: " + Object.keys(promises).length);
-  return Promise.all(promises);
+async function sendPredictionsRWIS(images, date, window) { 
+    Logger.debug('Stub: Sending RWIS predictions', CONTEXT, { count: Object.keys(images).length });
+    // Placeholder - Replace with actual logic potentially calling postRequestToBackend
+     await postRequestToBackend(images, 50, '/predict_rwis'); // Example call
 }
 
 async function updateAll(imageQueryAVL, imageQueryRWIS) {
@@ -397,46 +357,6 @@ document
     }
   });
 
-async function triggerBackendStartup(i) {
-  console.time("GET Request Duration " + i);
-  try {
-    const response = await fetch(RWIS_URL, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    console.log("Backend triggered successfully:", data);
-  } catch (error) {
-      console.error(`[triggerBackendStartup ${i}] Fetch failed:`, error);
-      throw error;
-  } finally {
-       console.timeEnd("GET Request Duration " + i);
-  }
-}
-
-const CONTAINERS = 5; // 5 fast requests spins up 2 containers
-// Upon startup, spin up cloud run containers in advance
-document.addEventListener("DOMContentLoaded", async (event) => {
-  console.log(
-    "Webpage has been opened, spinning up RWIS and AVL backend containers",
-  );
-
-  const promises = [];
-  for (let i = 0; i < CONTAINERS; i++) {
-    promises.push(triggerBackendStartup(i).catch(error => {
-      console.error(`Backend trigger ${i} failed:`, error);
-      return null;
-    }));
-  }
-
-  await Promise.all(promises);
-});
-
 function updateInterfaceNIK() {
   const removeUI = document.querySelectorAll(".nik-remove");
   const addUI = document.querySelectorAll(".nik-add");
@@ -448,41 +368,7 @@ function updateInterfaceNIK() {
   });
 }
 
-// Handle auto-population of NIK data (TODO: Remove this function once NIK is automated)
-document.addEventListener("DOMContentLoaded", function () {
-  const select = document.getElementById("nik-options");
-  const jsonFilePath =
-    "https://raw.githubusercontent.com/vstfl/mapbox-rsi/main/docs/assets/generatedNIKInterpolations/file-list.json";
-  const baseFileUrl =
-    "https://raw.githubusercontent.com/vstfl/mapbox-rsi/main/docs/assets/generatedNIKInterpolations/";
-
-  function populateDropdown(files) {
-    files.forEach((file) => {
-      const option = document.createElement("option");
-      option.value = baseFileUrl + file;
-      option.textContent = file.split(".")[0].replaceAll("_", "-");
-      select.appendChild(option);
-    });
-  }
-
-  fetch(jsonFilePath)
-    .then((response) => {
-        // Check if response is ok before parsing JSON
-        if (!response.ok) {
-            throw new Error(`HTTP error loading file list! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then((files) => {
-      populateDropdown(files);
-    })
-    .catch((error) => {
-        // Log the specific error from fetch or json parsing
-        console.error("Error fetching or parsing NIK file list:", error);
-        // Optionally display a message to the user in the UI
-    });
-});
-
+// Keep NIKData (utility function, could move to dateTimeUtils later)
 function NIKData(inputString) {
   // console.log(inputString)
   const parts = inputString.split("/").pop().split("_");
@@ -511,26 +397,24 @@ document
   .getElementById("nik-options")
   .addEventListener("change", async function () {
     var selectedValue = this.value;
-    console.log("Selected NIK interpolation: ", selectedValue);
+    if (!selectedValue) return; // Ignore empty selection
+    Logger.debug("Selected NIK interpolation URL: ", CONTEXT, selectedValue);
 
-    // Change currentNIKGeoJSON according to selected value
     try {
-      const response = await fetch(selectedValue);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      currentNIKGeoJSON = await response.json();
-      console.log("Loaded GeoJSON file:", selectedValue);
-      // console.log(currentNIKGeoJSON)
-    } catch (error) {
-      console.error("Error loading GeoJSON file:", error);
+      // Fetch GeoJSON using ApiService
+      currentNIKGeoJSON = await fetchNikGeoJson(selectedValue);
+      Logger.debug("Loaded NIK GeoJSON file via ApiService:", CONTEXT, selectedValue);
+      
+      // Trigger query based on the NIK file
+      let date = NIKData(selectedValue); // NIKData remains here
+      let window = 30; 
+      Logger.debug("Triggering query for NIK data", CONTEXT, { date, window });
+      await startQuery(date, window); // startQuery remains here
+
+    } catch (error) { // Catch errors from fetchNikGeoJson or startQuery
+      Logger.error(`Error processing NIK selection ${selectedValue}: ${error.message}`, CONTEXT, error);
+      // Handle error appropriately
     }
-
-    let date = NIKData(selectedValue);
-    let window = 30;
-
-    console.log("\n\nTEST DATE: " + date + "\nTEST WINDOW: " + window + "\n\n");
-    await startQuery(date, window);
   });
 
 // Handle NIK Interpolation Trigger
@@ -588,9 +472,7 @@ document
 // Logic to update website every minute in realtime mode
 let isUpdating = false;
 async function updateRealtimeData() {
-  // Check the state directly instead of the local variable for robustness
-  const isRealtimeEnabled = getState("realtimeState"); 
-  
+  const isRealtimeEnabled = getState("realtimeState");
   if (!isRealtimeEnabled) {
     console.log("Not in realtime state (checked via stateManager), skipping update.");
     // Also clear interval just in case it wasn't cleared by the toggle (safety net)
@@ -610,178 +492,27 @@ async function updateRealtimeData() {
   }
 
   isUpdating = true;
-
-  // Removed redundant check for realtimeState, now checking isRealtimeEnabled above
-  // if (realtimeState) { ... } else { ... }
-  
-  console.log("\n\nPerforming realtime update...");
+  Logger.debug("Performing realtime update...", CONTEXT);
   let d = new Date().toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const window = getState('timeRange') || 30;
+  let date = DateTime.now().setZone("America/Chicago").toISO(); // Ensure ISO format
+  Logger.debug("Realtime Query Params", CONTEXT, { date, window });
 
-  // Use a default window for realtime, or get from state if set elsewhere
-  const window = getState('timeRange') || 30; // Default to 30 mins if not set
-  let date = DateTime.now().setZone("America/Chicago");
-  date = date.toISO();
-  console.log("Realtime Date: " + date);
-  console.log("Realtime Window: " + window);
-
-  try { // Add try/catch around the core update logic
+  try { // Wrap the core update logic
       await startQuery(date, window); 
-      console.log(`Latest map update: ${d}`);
+      Logger.info(`Realtime map update complete: ${d}`, CONTEXT);
   } catch (error) {
-      console.error("[updateRealtimeData] Error during realtime query:", error);
-      // Optionally: show user feedback
+      // Error is already logged within startQuery/queryImagesByDateRange/etc.
+      // We catch here primarily to ensure isUpdating is reset.
+      Logger.error(`Realtime update cycle failed: ${error.message}`, CONTEXT, error);
+  } finally {
+      isUpdating = false;
   }
-
-  isUpdating = false;
 }
 // setInterval(updateRealtimeData, 40000); // REMOVE unconditional interval setup
-
-async function mesonetGETAVL(date, window) {
-  console.log("Performing get request to mesonet...");
-  const baseUrl = "https://mesonet.agron.iastate.edu/api/1/idot_dashcam.json";
-
-  const dateTime = new Date(date);
-  const validTimestamp = dateTime.toISOString();
-  const url = `${baseUrl}?valid=${encodeURIComponent(validTimestamp)}&window=${window}`;
-
-  console.log(url);
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error("Network response was not ok " + response.statusText);
-    }
-
-    const data = await response.json();
-    console.log("Response from mesonet API:", data);
-    return data;
-  } catch (error) {
-    console.error("There was a problem fetching the AVL data:", error);
-    throw error;
-  }
-}
-
-async function mesonetScrapeRWISv2(startTimestamp, endTimestamp) {
-  // Return a list of available image URLs from mesonet
-  const ids = [
-    "IDOT-000-03",
-    "IDOT-001-00",
-    "IDOT-008-00",
-    "IDOT-010-01",
-    "IDOT-025-01",
-    "IDOT-025-04",
-    "IDOT-030-01",
-    "IDOT-036-00",
-    "IDOT-036-03",
-    "IDOT-040-00",
-    "IDOT-047-00",
-    "IDOT-047-01",
-    "IDOT-047-02",
-    "IDOT-047-05",
-    "IDOT-047-06",
-    "IDOT-051-01",
-    "IDOT-051-02",
-    "IDOT-053-00",
-    "IDOT-053-02",
-    "IDOT-056-00",
-  ];
-
-  let modifiedStart = new Date(endTimestamp);
-  modifiedStart.setMinutes(modifiedStart.getMinutes() - 60);
-
-  const availableImages = [];
-
-  if (isDifferentDay(modifiedStart, new Date(endTimestamp))) {
-    console.log("Query spans two UTC days");
-    let midnight = new Date(modifiedStart);
-    midnight.setHours(24, 0, 0, 0);
-
-    for (const id of ids) {
-      const stationImagesFirstDay = await findImages(
-        id,
-        modifiedStart,
-        midnight,
-      );
-      availableImages.push(...stationImagesFirstDay);
-
-      const stationImagesSecondDay = await findImages(
-        id,
-        midnight,
-        endTimestamp,
-      );
-      availableImages.push(...stationImagesSecondDay);
-    }
-  } else {
-    for (const id of ids) {
-      const stationImages = await findImages(id, modifiedStart, endTimestamp);
-      availableImages.push(...stationImages);
-    }
-  }
-
-  // console.log("Actual Available Images: " + availableImages.length);
-  console.log("Available RWIS images: " + availableImages.length);
-  return availableImages;
-}
-
-async function findImages(rwisID, startTimestamp, endTimestamp) {
-  // Use of .toISOString to enforce UTC timestamping
-  const s = new DateTimeConstants(startTimestamp);
-  const e = new DateTimeConstants(endTimestamp);
-  const stationURL = `https://mesonet.agron.iastate.edu/archive/data/${s.year}/${s.month}/${s.day}/camera/${rwisID}`;
-  const stationURLS = await parseStationURL(stationURL);
-  const stationFilteredImages = filterURLS(stationURLS, s, e);
-  return stationFilteredImages;
-}
-
-function filterURLS(stationURLS, s, e) {
-  // Can assume that images passed to this function consist only of images within the same day
-  // TODO: This creates unknown edgecases between days. Will probably have to re-write this for a full implementation
-
-  let filteredImages = [];
-  for (const url of stationURLS) {
-    const urlStart = url.lastIndexOf("_") + 1;
-    const urlEnd = url.lastIndexOf(".");
-    const urlHHMM = url.substring(urlStart, urlEnd).slice(-4);
-
-    if (isInRange(urlHHMM, s, e)) {
-      filteredImages.push(url);
-    }
-  }
-  return filteredImages;
-}
-
-async function parseStationURL(stationURL) {
-  let stationURLS = [];
-  try {
-    const response = await fetch(stationURL);
-    const htmlText = await response.text();
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlText, "text/html");
-    const links = doc.querySelectorAll("a");
-
-    links.forEach((link) => {
-      const href = link.getAttribute("href");
-      // console.log(href);
-      if (href.startsWith("IDOT") && href.endsWith(".jpg")) {
-        stationURLS.push(stationURL + "/" + href);
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching or parsing the URL:", error);
-  }
-
-  return stationURLS;
-}
 
 function predictionExistsAVL(actualImagesAVL, firebaseImages) {
   // console.log("Inside predictionExistsAVL()");

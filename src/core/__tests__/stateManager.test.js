@@ -1,7 +1,7 @@
 /**
  * Tests for the state manager
  */
-import { getState, setState, subscribe, unsubscribe, initialize } from '../stateManager.js';
+import { getState, setState, subscribe, unsubscribe, initialize, resetStateForTesting } from '../stateManager.js';
 import Logger from '../logger.js';
 
 // Mock the logger to prevent console output during tests
@@ -25,6 +25,11 @@ jest.mock('../logger.js', () => ({
 describe('State Manager', () => {
   // Clear mocks and reset state between tests
   beforeEach(() => {
+    if (resetStateForTesting) {
+      resetStateForTesting();
+    } else {
+      console.error('resetStateForTesting is not available in this environment!');
+    }
     jest.clearAllMocks();
   });
 
