@@ -110,17 +110,44 @@ export function removeData(chart) {
 }
 
 export function addData(chart, newData) {
-  // Undefined, Fully, Partly, Bare
-  const jsonObject = JSON.parse(newData);
+  console.log("[addData] Received data:", newData, "Type:", typeof newData);
+  let jsonObject;
+  
+  // Check if newData is already an object
+  if (typeof newData === 'object' && newData !== null) {
+    jsonObject = newData;
+  } else if (typeof newData === 'string') {
+    try {
+      // Attempt to parse if it's a string
+      jsonObject = JSON.parse(newData);
+      console.log("[addData] Successfully parsed string data.");
+    } catch (error) {
+      console.error("[addData] Error parsing newData string:", error, "Data:", newData);
+      // Handle error appropriately - maybe set default data or return
+      chart.data.datasets[0].data = [0, 0, 0, 0]; // Example: Clear data on error
+      chart.update();
+      chart.canvas.parentNode.style.display = "none";
+      return; // Exit the function if parsing fails
+    }
+  } else {
+    console.error("[addData] Invalid data type received:", typeof newData, "Data:", newData);
+    chart.data.datasets[0].data = [0, 0, 0, 0]; // Clear data
+    chart.update();
+    chart.canvas.parentNode.style.display = "none";
+    return; // Exit if data is invalid
+  }
+
+  // Ensure jsonObject has the expected properties, providing defaults if necessary
   const listForm = [
-    jsonObject.Undefined,
-    jsonObject.Full,
-    jsonObject.Partly,
-    jsonObject.Bare,
+    jsonObject.Undefined || 0,
+    jsonObject.Full || 0,
+    jsonObject.Partly || 0,
+    jsonObject.Bare || 0,
   ];
+  
+  console.log("[addData] Processed data for chart:", listForm);
   const rounded = roundListToPrecision(listForm, 8);
   chart.data.datasets[0].data = rounded;
-  // console.log(chart.data.datasets);
   chart.update();
   chart.canvas.parentNode.style.display = "flex";
 }

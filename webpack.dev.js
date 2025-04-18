@@ -1,5 +1,10 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
+const webpack = require('webpack');
+
+// Determine log level from environment variable set by cross-env
+// Default to 'INFO' for dev if not set, 'DEBUG' for dev:verbose
+const logLevel = process.env.LOG_LEVEL || 'INFO'; 
 
 module.exports = {
   entry: "./src/index.js",
@@ -24,6 +29,10 @@ module.exports = {
       template: "./src/template.html",
       filename: "index.html",
     }),
+    new webpack.DefinePlugin({
+      'process.env.NODE_ENV': JSON.stringify('development'),
+      'process.env.LOG_LEVEL': JSON.stringify(logLevel)
+    })
   ],
 
   devServer: {

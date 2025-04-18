@@ -5,20 +5,20 @@ This document contains detailed tasks broken down from the priority change areas
 ## 1. Code Organization and Architecture
 
 ### 1.1 Resolve Circular Dependencies
-- **Task 1.1.1**: Analyze and document all circular dependencies between modules
-- **Task 1.1.2**: Refactor `webInteractions.js` to remove dependencies on `mapInteractions.js`
-- **Task 1.1.3**: Refactor `mapInteractions.js` to remove dependencies on `webInteractions.js`
-- **Task 1.1.4**: Create a mediator module to handle cross-module communication
+- **Task 1.1.1**: Analyze and document all circular dependencies between modules - `[DONE]`
+- **Task 1.1.2**: Refactor `webInteractions.js` to remove dependencies on `mapInteractions.js` - `[DONE (via State Manager)]`
+- **Task 1.1.3**: Refactor `mapInteractions.js` to remove dependencies on `webInteractions.js` - `[DONE (via State Manager)]`
+- **Task 1.1.4**: Create a mediator module to handle cross-module communication - `[DONE (Implemented as State Manager)]`
 
 ### 1.2 Implement State Management
-- **Task 1.2.1**: Design a central state management pattern (pub/sub or similar)
-- **Task 1.2.2**: Create a core state module with subscribe/publish functionality
-- **Task 1.2.3**: Refactor map state to use the central state management
-- **Task 1.2.4**: Refactor UI state to use the central state management
+- **Task 1.2.1**: Design a central state management pattern (pub/sub or similar) - `[DONE]`
+- **Task 1.2.2**: Create a core state module with subscribe/publish functionality (`core/stateManager.js`) - `[DONE]`
+- **Task 1.2.3**: Refactor map state to use the central state management - `[DONE]`
+- **Task 1.2.4**: Refactor UI state to use the central state management - `[DONE]`
 
 ### 1.3 Create Module Separation
-- **Task 1.3.1**: Split `webInteractions.js` into domain-specific modules
-- **Task 1.3.2**: Extract common utilities into a shared module
+- **Task 1.3.1**: Split `webInteractions.js` into domain-specific modules - `[IN PROGRESS - Requires further splitting]`
+- **Task 1.3.2**: Extract common utilities into a shared module (`core/utils/...`, `core/ui/...`) - `[DONE]`
 - **Task 1.3.3**: Create a proper config module for application settings
 - **Task 1.3.4**: Implement clear interfaces between modules
 
@@ -61,8 +61,9 @@ This document contains detailed tasks broken down from the priority change areas
 ### 4.1 Async Error Handling
 - **Task 4.1.1**: Add try/catch blocks to all Firebase operations
 - **Task 4.1.2**: Implement error handling for Mapbox operations
-- **Task 4.1.3**: Create error handling for API requests
+- **Task 4.1.3**: Create error handling for API requests (Mesonet, Backend)
 - **Task 4.1.4**: Implement global error tracking and logging
+- **Task 4.1.5**: Add specific error handling for JSON parsing in event handlers - `[DONE]`
 
 ### 4.2 User Experience
 - **Task 4.2.1**: Design and implement user-friendly error messages
@@ -80,7 +81,7 @@ This document contains detailed tasks broken down from the priority change areas
 
 ### 5.2 Code Duplication
 - **Task 5.2.1**: Identify and document duplicate code patterns
-- **Task 5.2.2**: Create shared utility functions
+- **Task 5.2.2**: Create shared utility functions (`core/utils/...`, `core/ui/...`) - `[DONE]`
 - **Task 5.2.3**: Implement proper inheritance for similar components
 - **Task 5.2.4**: Refactor redundant data processing logic
 
@@ -93,13 +94,14 @@ This document contains detailed tasks broken down from the priority change areas
 ## 6. Testing Infrastructure
 
 ### 6.1 Testing Setup
-- **Task 6.1.1**: Configure Jest for unit testing
+- **Task 6.1.1**: Configure Jest for unit testing - `[DONE]`
 - **Task 6.1.2**: Set up Cypress for end-to-end testing
 - **Task 6.1.3**: Configure test coverage reporting
 - **Task 6.1.4**: Integrate testing with CI/CD pipeline
 
 ### 6.2 Test Creation
-- **Task 6.2.1**: Write unit tests for core utilities
-- **Task 6.2.2**: Create tests for map functionality
-- **Task 6.2.3**: Implement tests for data processing
-- **Task 6.2.4**: Add integration tests for critical user flows 
+- **Task 6.2.1**: Write unit tests for core utilities (`stateManager`, `logger`, `dateTimeUtils`, `dataTransformUtils`, `uiInteractions`) - `[DONE]`
+- **Task 6.2.2**: Create tests for map functionality (Integration tests exist, need review/refinement)
+- **Task 6.2.3**: Implement tests for data processing (`firebaseHandler`, `interpolation`, `convertToGeoJSON`)
+- **Task 6.2.4**: Add integration tests for critical user flows (Existing test needs review)
+- **Task 6.2.5**: Fix failing/broken unit tests - `[DONE]` 

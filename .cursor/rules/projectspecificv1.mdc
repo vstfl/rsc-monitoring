@@ -1,6 +1,11 @@
 ---
 description: 
 globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
 alwaysApply: true
 ---
 # Cursor Project Rules
@@ -59,8 +64,10 @@ alwaysApply: true
 - Ensure linting (`npm run lint`) passes with zero errors.  
 - Verify Webpack builds (`npm run build`) without warnings.  
 - Provide simple manual‑check snippets (e.g., “map loads”, “data indexed”, “chart renders”) after code.
+- When implementing new features or fixing bugs, follow test-driven development principles by writing tests first using Jest. Tests should be located in __tests__ directories adjacent to the code being tested, following the existing patterns in src/core/__tests__ and src/__tests__.
 
 ## 9. Iterate & Clarify  
 - After delivering code, ask if adjustments or alternative patterns are needed.  
 - Adapt quickly to user feedback at each stage.
+
 

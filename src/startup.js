@@ -1,8 +1,15 @@
 document.getElementById("loadingScreen").style.opacity = 1;
+
+// Show the sign-in container immediately
+document.querySelector(".sign-in-container").style.opacity = 1;
+
 window.addEventListener("load", function () {
   setTimeout(function () {
-    // Gradually increase the opacity of elements with class "loadup" to reveal the content
-    let elements = document.querySelectorAll(".loadup");
+    // Hide loading screen immediately when page is loaded
+    document.getElementById("loadingScreen").style.display = "none";
+    
+    // Gradually increase the opacity of UI elements (but not the sign-in container)
+    let uiElements = document.querySelectorAll(".ui-container.loadup, .map-container.loadup, .map-styles.loadup");
     let opacity = 0;
     const increment = 0.02; // Adjust the increment value as needed for smoother or faster transitions
     const duration = 500; // Adjust the duration for smoother or faster transitions
@@ -24,15 +31,12 @@ window.addEventListener("load", function () {
 
     // Execute the animation for each element sequentially
     async function animateElements() {
-      for (let element of elements) {
+      for (let element of uiElements) {
         await increaseOpacity(element);
       }
     }
 
     // Start the animation
-    animateElements().then(() => {
-      // Hide the loading screen after all animations are complete
-      document.getElementById("loadingScreen").style.display = "none";
-    });
+    animateElements();
   }, 500);
 });

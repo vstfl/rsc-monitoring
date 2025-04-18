@@ -20,28 +20,86 @@ import * as geojson from "geojson";
 import { DateTime } from "luxon";
 import { getState, setState, subscribe } from "./core/stateManager.js";
 
+// Import our new modular utility functions
+import { 
+  calculateDataRange, 
+  DateTimeConstants, 
+  isInRange, 
+  isDifferentDay 
+} from "./core/utils/dateTimeUtils.js";
+
+import { 
+  convertToGeoJSON, 
+  removeLettersAfterUnderscore, 
+  classByNumber, 
+  highestNumberString 
+} from "./core/utils/dataTransformUtils.js";
+
+import { 
+  toggleConsole, 
+  toggleArrow, 
+  scrollToBottom,
+  setupEventListeners
+} from "./core/ui/uiInteractions.js";
+
 // Initialize state subscriptions
 subscribe("map", (newMap) => {
   console.log("Map state updated:", newMap);
 });
 
+// Initialize event listeners
+document.addEventListener('DOMContentLoaded', setupEventListeners);
+
+// Export function for use in other modules
+export { scrollToBottom };
+
 // Handle study area toggle
 const studyAreaToggle = document.querySelector("#studyarea-toggle");
-export let studyAreaState = true;
-studyAreaToggle.addEventListener("change", (e) => {
+studyAreaToggle.addEventListener("change", async (e) => {
+  console.log("Study area toggle changed:", e.target.checked);
   setState("studyAreaState", e.target.checked);
+  
+  // Refresh the map data if we have current GeoJSON
+  const currentGeoJSON = getState("currentGeoJSON");
+  if (currentGeoJSON) {
+    console.log("Refreshing map data with studyAreaState:", e.target.checked);
+    updateMapData(currentGeoJSON);
+  }
 });
 
 // Handle realtime toggle
 const realtimeToggle = document.querySelector("#realtime-toggle");
 const archivedQuery = document.querySelectorAll(".archived-query");
 let realtimeState = false;
+let realtimeIntervalId = null; // Variable to hold the interval ID
+
 realtimeToggle.addEventListener("change", (e) => {
   realtimeState = e.target.checked;
+  setState("realtimeState", realtimeState); // Update global state
+  
   archivedQuery.forEach((query) => {
     query.style.display = realtimeState ? "none" : "flex";
   });
-  console.log(`Realtime: ${realtimeState}`);
+  
+  if (realtimeState) {
+    console.log("Realtime Mode ENABLED");
+    // Clear any existing interval just in case
+    if (realtimeIntervalId) {
+      clearInterval(realtimeIntervalId);
+    }
+    // Update immediately and start interval
+    updateRealtimeData(); 
+    realtimeIntervalId = setInterval(updateRealtimeData, 40000); // 40 seconds
+  } else {
+    console.log("Realtime Mode DISABLED");
+    // Clear the interval when toggling off
+    if (realtimeIntervalId) {
+      clearInterval(realtimeIntervalId);
+      realtimeIntervalId = null;
+      console.log("Realtime update interval cleared.");
+    }
+    // Optionally: Add logic here to revert map to last archived query state if desired
+  }
 });
 
 // Handle console shift toggle button
@@ -71,84 +129,102 @@ slider.addEventListener("input", function () {
   console.log(currentRange);
 });
 
-export function scrollToBottom() {
-  let consoleDiv = document.querySelector(".console.resizable");
-  consoleDiv.scrollTop = consoleDiv.scrollHeight;
-}
-
 // Handle image click to view// handHandle RWIS data
 // Check if caLogic to gobtain lbmost recent image for specific said angleeach angle
+/*
 document.addEventListener("DOMContentLoaded", function () {
   let imageElement = document.getElementById("pointImage");
-  let clickedPointValues = getState("clickedPointValues");
 
   function toggleImageSrc() {
+    // Get the latest clickedPointValues from state
+    const clickedPointValues = getState("clickedPointValues");
+    if (!clickedPointValues) return;
+    
     let img1 = clickedPointValues.image;
     if (!clickedPointValues.CAM && clickedPointValues.type == "RWIS") {
       // let img2 = `./assets/gradcamimages/Grad-CAM_${img1.split("/").pop()}`;
       // https://storage.googleapis.com/rwis_cam_images/images/IDOT-048-04_201901121508.jpg_gradcam.png
       // Grad-CAM_IDOT-026-01_201901121420.jpg
 
-      // console.log(img1);
+      console.log("Toggling to GradCAM image");
+      console.log("Original image:", img1);
       let img2 = `https://storage.googleapis.com/rwis_cam_images/images/${img1.split("/").pop()}_gradcam.png`;
-      // console.log(img2);
+      console.log("GradCAM image URL:", img2);
 
       imageElement.src = img2;
+      // Update the state with the new CAM value
       setState("clickedPointValues", { ...clickedPointValues, CAM: true });
     } else {
+      console.log("Toggling back to original image");
       imageElement.src = img1;
+      // Update the state with the new CAM value
       setState("clickedPointValues", { ...clickedPointValues, CAM: false });
     }
   }
 
   imageElement.addEventListener("click", toggleImageSrc);
 });
+*/
 
 async function startQuery(date, window) {
+  console.log(`[Start Query] Date: ${date}, Window: ${window}`);
   const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
+  console.log(`[Start Query] Calculated Range: ${startTimestamp.toISOString()} to ${endTimestamp.toISOString()}`);
+  
   const [imageQueryAVL, imageQueryRWIS] = await queryImagesByDateRange(
     startTimestamp,
     endTimestamp,
   );
+  console.log(`[Start Query] Firebase results - AVL: ${imageQueryAVL?.length || 0}, RWIS: ${imageQueryRWIS?.length || 0}`);
+  // Optional: Log first few items for inspection
+  // console.log("[Start Query] Firebase AVL Sample:", imageQueryAVL?.slice(0, 2));
+  // console.log("[Start Query] Firebase RWIS Sample:", imageQueryRWIS?.slice(0, 2));
 
   // Scrape online database if AVL/RWIS images exist during time window
+  console.log("[Start Query] Fetching Mesonet AVL data...");
   const actualImagesAVL = await mesonetGETAVL(date, window);
+  console.log(`[Start Query] Mesonet AVL results: ${actualImagesAVL?.data?.length || 0}`);
 
+  console.log("[Start Query] Fetching Mesonet RWIS data...");
   const actualImagesRWIS = await mesonetScrapeRWISv2(
     startTimestamp,
     endTimestamp,
   );
+  console.log(`[Start Query] Mesonet RWIS results: ${actualImagesRWIS?.length || 0}`);
 
   // Construct the request for backend if predictions need to be completed
+  console.log("[Start Query] Checking for missing RWIS predictions...");
   const imagesForPredRWIS = predictionExistsRWIS(
     actualImagesRWIS,
     imageQueryRWIS,
   );
+  console.log(`[Start Query] Found ${Object.keys(imagesForPredRWIS || {}).length} RWIS images needing prediction.`);
+  
+  console.log("[Start Query] Checking for missing AVL predictions...");
   const imagesForPredAVL = predictionExistsAVL(actualImagesAVL, imageQueryAVL);
+   console.log(`[Start Query] Found ${Object.keys(imagesForPredAVL || {}).length} AVL images needing prediction.`);
 
   // If there are images to predict, prep request to RWIS/AVL backend asynchronously
   if (imagesForPredAVL) {
-    console.log("Unpredicted AVL images were found, sending to backend...");
-    console.log(
-      "# of unpredicted AVL images: " + Object.keys(imagesForPredAVL).length,
-    );
+    console.log("[Start Query] Sending AVL prediction request...");
+    // console.log("[Start Query] AVL Prediction Payload Sample:", JSON.stringify(Object.values(imagesForPredAVL || {}).slice(0,2)));
     sendPredictionsAVL(imagesForPredAVL, date, window);
   } else {
-    console.log("All available AVL images already have predictions.");
+    console.log("[Start Query] No AVL predictions needed.");
   }
 
   if (imagesForPredRWIS) {
-    console.log("Unpredicted RWIS images were found, sending to backend...");
-    console.log(
-      "# of unpredicted RWIS images: " + Object.keys(imagesForPredRWIS).length,
-    );
+    console.log("[Start Query] Sending RWIS prediction request...");
+    // console.log("[Start Query] RWIS Prediction Payload Sample:", JSON.stringify(Object.values(imagesForPredRWIS || {}).slice(0,2)));
     sendPredictionsRWIS(imagesForPredRWIS, date, window);
   } else {
-    console.log("All available RWIS images already have predictions.");
+    console.log("[Start Query] No RWIS predictions needed.");
   }
 
   // Update with initial visualization
+  console.log("[Start Query] Updating map visualization...");
   updateAll(imageQueryAVL, imageQueryRWIS);
+  console.log("[Start Query] Query processing complete.");
 }
 
 async function sendPredictionsAVL(imagesForPredAVL, date, window) {
@@ -253,7 +329,11 @@ function postRequestToBackend(imagesForPred, chunkSize, endpoint) {
 }
 
 async function updateAll(imageQueryAVL, imageQueryRWIS) {
+  console.log("[Update All] Preparing GeoJSON...");
   const newGeoJSON = convertToGeoJSON(imageQueryAVL, imageQueryRWIS);
+  console.log(`[Update All] Generated GeoJSON with ${newGeoJSON?.features?.length || 0} features.`);
+  // Optional: Log the generated GeoJSON for debugging
+  // console.log("[Update All] GeoJSON Sample:", JSON.stringify(newGeoJSON?.features?.slice(0, 2)));
 
   updateMapData(newGeoJSON);
 
@@ -272,6 +352,7 @@ async function updateAll(imageQueryAVL, imageQueryRWIS) {
       await interpolateGeoJSONLanesNIK(currentNIKGeoJSON);
     updateInterpolation(currentInterpolatedGeoJSON);
   }
+  console.log("[Update All] Map update initiated.");
 }
 
 // Handle form submission for querying
@@ -313,15 +394,24 @@ document
 
 async function triggerBackendStartup(i) {
   console.time("GET Request Duration " + i);
-  const response = await fetch(RWIS_URL, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
-  const data = await response.json();
-  console.log("Backend triggered successfully:", data);
-  console.timeEnd("GET Request Duration " + i);
+  try {
+    const response = await fetch(RWIS_URL, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    console.log("Backend triggered successfully:", data);
+  } catch (error) {
+      console.error(`[triggerBackendStartup ${i}] Fetch failed:`, error);
+      throw error;
+  } finally {
+       console.timeEnd("GET Request Duration " + i);
+  }
 }
 
 const CONTAINERS = 5; // 5 fast requests spins up 2 containers
@@ -333,7 +423,10 @@ document.addEventListener("DOMContentLoaded", async (event) => {
 
   const promises = [];
   for (let i = 0; i < CONTAINERS; i++) {
-    promises.push(triggerBackendStartup(i));
+    promises.push(triggerBackendStartup(i).catch(error => {
+      console.error(`Backend trigger ${i} failed:`, error);
+      return null;
+    }));
   }
 
   await Promise.all(promises);
@@ -368,11 +461,21 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   fetch(jsonFilePath)
-    .then((response) => response.json())
+    .then((response) => {
+        // Check if response is ok before parsing JSON
+        if (!response.ok) {
+            throw new Error(`HTTP error loading file list! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then((files) => {
       populateDropdown(files);
     })
-    .catch((error) => console.error("Error:", error));
+    .catch((error) => {
+        // Log the specific error from fetch or json parsing
+        console.error("Error fetching or parsing NIK file list:", error);
+        // Optionally display a message to the user in the UI
+    });
 });
 
 function NIKData(inputString) {
@@ -461,6 +564,20 @@ document
 // Logic to update website every minute in realtime mode
 let isUpdating = false;
 async function updateRealtimeData() {
+  // Check the state directly instead of the local variable for robustness
+  const isRealtimeEnabled = getState("realtimeState"); 
+  
+  if (!isRealtimeEnabled) {
+    console.log("Not in realtime state (checked via stateManager), skipping update.");
+    // Also clear interval just in case it wasn't cleared by the toggle (safety net)
+    if (realtimeIntervalId) {
+        clearInterval(realtimeIntervalId);
+        realtimeIntervalId = null;
+        console.warn("Realtime interval cleared unexpectedly inside update function.");
+    }
+    return;
+  }
+  
   if (isUpdating) {
     console.log(
       "Previous realtime update is already in progress, skipping this interval",
@@ -470,195 +587,33 @@ async function updateRealtimeData() {
 
   isUpdating = true;
 
-  if (realtimeState) {
-    console.log("\n\nPerforming realtime update...");
-    let d = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  // Removed redundant check for realtimeState, now checking isRealtimeEnabled above
+  // if (realtimeState) { ... } else { ... }
+  
+  console.log("\n\nPerforming realtime update...");
+  let d = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-    const formData = new FormData(document.getElementById("query-form"));
+  // Use a default window for realtime, or get from state if set elsewhere
+  const window = getState('timeRange') || 30; // Default to 30 mins if not set
+  let date = DateTime.now().setZone("America/Chicago");
+  date = date.toISO();
+  console.log("Realtime Date: " + date);
+  console.log("Realtime Window: " + window);
 
-    let date = DateTime.now().setZone("America/Chicago");
-    date = date.toISO();
-    console.log("Realtime Date: " + date);
-    const window = formData.get("window");
-
-    await startQuery(date, window);
-
-    console.log("Window:", currentRange);
-    console.log(`Latest map update: ${d}`);
-  } else {
-    console.log("Not in realtime state, not updating map");
+  try { // Add try/catch around the core update logic
+      await startQuery(date, window); 
+      console.log(`Latest map update: ${d}`);
+  } catch (error) {
+      console.error("[updateRealtimeData] Error during realtime query:", error);
+      // Optionally: show user feedback
   }
 
   isUpdating = false;
 }
-setInterval(updateRealtimeData, 40000);
-
-// Ensure date is in UTC (for standardization)
-function calculateDataRange(date, windowSize) {
-  let timeDiff = windowSize * 1; //change to 60 for hours
-  const dateTime = new Date(date);
-
-  // Already in UTC format, just defaulted to local timespace when console logged
-  const startDate = new Date(dateTime.getTime() - timeDiff * 60000);
-  const endDate = new Date(dateTime.getTime() + timeDiff * 60000);
-
-  // console.log("start: " + startDate + "\nend:" + endDate);
-  console.log(
-    "UTC start: " +
-      startDate.toISOString() +
-      "\nUTC end: " +
-      endDate.toISOString(),
-  );
-  return [startDate, endDate];
-}
-
-function removeLettersAfterUnderscore(str) {
-  return str.replace(/_.*/, "");
-}
-
-function convertToGeoJSON(pointListAVL, pointListRWIS) {
-  let data = [];
-  for (const point of pointListAVL) {
-    const base = point["data"];
-    const id = removeLettersAfterUnderscore(point["id"]);
-    // console.log(base);
-    const lat = base["Position"]["latitude"];
-    const lng = base["Position"]["longitude"];
-    const classes = {
-      Undefined: base["Undefined"],
-      Bare: base["Bare"],
-      Full: base["Full"],
-      Partly: base["Partly"],
-    };
-
-    const classification = highestNumberString(
-      base["Undefined"],
-      base["Bare"],
-      base["Full"],
-      base["Partly"],
-    );
-    const url = base["IMAGE_URL"];
-    const timestamp = base["Date"]["seconds"];
-
-    data.push({
-      id: id,
-      type: "AVL",
-      lat: lat,
-      lng: lng,
-      class: classes,
-      classification: classification,
-      url: url,
-      timestamp: timestamp,
-    });
-  }
-
-  const RWISMap = {};
-  // first pass: initialize all station data:
-  for (const point of pointListRWIS) {
-    const base = point["data"];
-    const id = removeLettersAfterUnderscore(point["id"]).substring(0, 8);
-    if (!(id in RWISMap)) {
-      const lat = base["Coordinates"]["latitude"];
-      const lng = base["Coordinates"]["longitude"];
-      const angles = {};
-      const station = {
-        id: id,
-        type: "RWIS",
-        lat: lat,
-        lng: lng,
-        angles: angles,
-      };
-      RWISMap[id] = station;
-    }
-  }
-
-  // Handle RWIS data
-  for (const point of pointListRWIS) {
-    const base = point["data"];
-    const id = removeLettersAfterUnderscore(point["id"]).substring(0, 8);
-
-    const classes = {
-      Undefined: base["Class 4"],
-      Bare: base["Class 1"],
-      Partly: base["Class 2"],
-      Full: base["Class 3"],
-    };
-    // console.log(base["GradCAM"]);
-    const classification = classByNumber(base["Predicted Class"]);
-    const url = base["Image"];
-    const timestamp = base["Date"]["seconds"];
-    const gradcam = base["GradCam"];
-    const angle = removeLettersAfterUnderscore(point["id"]).split("-")[2];
-
-    // output to dict
-    const angleDict = {
-      angle: angle,
-      timestamp: timestamp,
-      url: url,
-      class: classes,
-      classification: classification,
-      gradcam: gradcam,
-    };
-
-    // Logic to obtain most recent image for each angle
-    if (angle in RWISMap[id]["angles"]) {
-      if (RWISMap[id]["angles"][angle]["timestamp"] < timestamp) {
-        RWISMap[id]["angles"][angle] = angleDict;
-      }
-    } else {
-      RWISMap[id]["angles"][angle] = angleDict;
-    }
-  }
-  // console.log(RWISMap);
-  for (const key in RWISMap) {
-    const station = RWISMap[key];
-    let mostRecentKey;
-    let mostRecentTimestamp = 0;
-    // Iterate through angles and find most recent classification
-    for (const anglekey in station["angles"]) {
-      let currentTimestamp = station["angles"][anglekey]["timestamp"];
-      if (currentTimestamp > mostRecentTimestamp) {
-        mostRecentKey = anglekey;
-        mostRecentTimestamp = currentTimestamp;
-      }
-    }
-    station["classification"] =
-      station["angles"][mostRecentKey]["classification"];
-    station["timestamp"] = mostRecentTimestamp;
-    station["recentangle"] = mostRecentKey;
-    data.push(station);
-  }
-  // console.log(data);
-  return geojson.parse(data, { Point: ["lat", "lng"] });
-}
-
-function classByNumber(classNumber) {
-  if (classNumber === 1) {
-    return "Bare";
-  } else if (classNumber === 2) {
-    return "Partly";
-  } else if (classNumber === 3) {
-    return "Full";
-  } else if (classNumber === 4) {
-    return "Undefined";
-  }
-}
-
-function highestNumberString(unde, bare, full, part) {
-  var highest = Math.max(unde, bare, full, part);
-  if (highest === unde) {
-    return "Undefined";
-  } else if (highest === bare) {
-    return "Bare";
-  } else if (highest === full) {
-    return "Full";
-  } else if (highest === part) {
-    return "Partly";
-  }
-}
+// setInterval(updateRealtimeData, 40000); // REMOVE unconditional interval setup
 
 async function mesonetGETAVL(date, window) {
   console.log("Performing get request to mesonet...");
@@ -691,92 +646,6 @@ async function mesonetGETAVL(date, window) {
   }
 }
 
-// DEFUNCT
-// REASON: Using the mesonet API is much faster in cases where a day has a very large amount of vehicles
-async function mesonetScrapeAVL(startTimestamp, endTimestamp) {
-  const availableImages = [];
-  // https://mesonet.agron.iastate.edu/archive/data/2019/01/12/camera/idot_trucks/A33537/
-  // For now, assume data spans within a day (ignore edge cases wherein start is one day and end is another)
-  const s = new DateTimeConstants(startTimestamp);
-  const e = new DateTimeConstants(endTimestamp);
-
-  const truckURL = `https://mesonet.agron.iastate.edu/archive/data/${s.year}/${s.month}/${s.day}/camera/idot_trucks`;
-  const truckImageURLS = await parseTruckURL(truckURL);
-
-  const truckFilteredImages = filterURLS(truckImageURLS, s, e);
-
-  console.log(truckImageURLS);
-  console.log(truckFilteredImages);
-
-  console.log(
-    "\n\nLength comparison: \n\nAll Truck Images: " +
-      truckImageURLS.length +
-      "\nDate Filtered Truck Images: " +
-      truckFilteredImages.length,
-  );
-
-  // console.log("Available AVL images: " + availableImages.length);
-  // return availableImages;
-}
-
-// DEFUNCT
-async function parseTruckURL(truckURL) {
-  let truckURLS = [];
-  try {
-    const response = await fetch(truckURL);
-    const htmlText = await response.text();
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlText, "text/html");
-    const truckLinks = doc.querySelectorAll("a");
-
-    truckLinks.forEach((link) => {
-      const href = link.getAttribute("href");
-
-      if (href.startsWith("A")) {
-        truckURLS.push(truckURL + "/" + href);
-      }
-    });
-    // console.log(truckURLS);
-  } catch (error) {
-    console.error("Error fetching or parsing the AVL Truck URL:", error);
-  }
-
-  const truckImageURLS = [];
-  try {
-    // Can take a super long time on very heavy days (2019-01-12 has over 70,000 images)
-    // 70,000 images takes around 17 seconds to parse
-    // Could probably optimize this by taking into account the "last modified" date
-    // (i.e. if startTimestamp > last modified -> ignore)
-    console.time("Fetch each truck URL");
-    const fetches = truckURLS.map((truck) =>
-      fetch(truck).then((res) => res.text()),
-    );
-    const htmlTexts = await Promise.all(fetches);
-    console.timeEnd("Fetch each truck URL");
-    console.log("SWAG 1");
-    htmlTexts.forEach((htmlText) => {
-      console.log("YES");
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, "text/html");
-      const truckImages = doc.querySelectorAll("a");
-
-      truckImages.forEach((link) => {
-        const href = link.getAttribute("href");
-
-        if (href.endsWith(".jpg") && href.startsWith("A")) {
-          truckImageURLS.push(href);
-        }
-      });
-    });
-    // console.log(truckImageURLS);
-  } catch (error) {
-    console.error("Error fetching or parsing the AVL Truck Image URL:", error);
-  }
-
-  return truckImageURLS;
-}
-
 async function mesonetScrapeRWISv2(startTimestamp, endTimestamp) {
   // Return a list of available image URLs from mesonet
   const ids = [
@@ -806,10 +675,6 @@ async function mesonetScrapeRWISv2(startTimestamp, endTimestamp) {
   modifiedStart.setMinutes(modifiedStart.getMinutes() - 60);
 
   const availableImages = [];
-
-  function isDifferentDay(date1, date2) {
-    return date1.toDateString() !== date2.toDateString();
-  }
 
   if (isDifferentDay(modifiedStart, new Date(endTimestamp))) {
     console.log("Query spans two UTC days");
@@ -843,28 +708,6 @@ async function mesonetScrapeRWISv2(startTimestamp, endTimestamp) {
   return availableImages;
 }
 
-class DateTimeConstants {
-  constructor(timestamp, hoursToAdd = 0) {
-    this.date = new Date(timestamp);
-    this.date.setHours(this.date.getHours() + hoursToAdd);
-  }
-  get year() {
-    return this.date.getUTCFullYear();
-  }
-  get month() {
-    return String(this.date.getUTCMonth() + 1).padStart(2, "0");
-  }
-  get day() {
-    return String(this.date.getUTCDate()).padStart(2, "0");
-  }
-  get hour() {
-    return String(this.date.getUTCHours()).padStart(2, "0");
-  }
-  get minute() {
-    return String(this.date.getUTCMinutes()).padStart(2, "0");
-  }
-}
-
 async function findImages(rwisID, startTimestamp, endTimestamp) {
   // Use of .toISOString to enforce UTC timestamping
   const s = new DateTimeConstants(startTimestamp);
@@ -875,23 +718,6 @@ async function findImages(rwisID, startTimestamp, endTimestamp) {
   return stationFilteredImages;
 }
 
-function isInRange(urlHHMM, s, e) {
-  const urlHour = parseInt(urlHHMM.slice(0, 2), 10);
-  const urlMinute = parseInt(urlHHMM.slice(-2), 10);
-
-  const startHour = parseInt(s.hour, 10);
-  const startMinute = parseInt(s.minute, 10);
-  const endHour = parseInt(e.hour, 10);
-  const endMinute = parseInt(e.minute, 10);
-
-  const urlTime = urlHour * 60 + urlMinute;
-  const startTime = startHour * 60 + startMinute;
-  const endTime = endHour * 60 + endMinute;
-
-  return urlTime >= startTime && urlTime <= endTime;
-}
-
-// Filter full list of images for specifically within daterange
 function filterURLS(stationURLS, s, e) {
   // Can assume that images passed to this function consist only of images within the same day
   // TODO: This creates unknown edgecases between days. Will probably have to re-write this for a full implementation
