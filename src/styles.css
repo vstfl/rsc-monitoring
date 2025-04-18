@@ -295,6 +295,25 @@ div.nav {
   left: 7px;
 }
 
+/* Style for the angle selector dropdown */
+#angle-select {
+  background-color: rgba(20, 20, 20, 0.534); /* Match button container */
+  color: #f0f0f0; /* Light text for dark background */
+  border: 1px solid rgba(80, 80, 80, 0.6); /* Subtle border */
+  padding: 5px 8px; /* Add some padding */
+  /* Inherits border-radius from inline style */
+  /* Inherits flex-grow, margin, text-align from inline style */
+  -webkit-appearance: none; /* Remove default OS styling (optional) */
+  -moz-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* Style the dropdown arrow (optional, browser support varies) */
+#angle-select::-ms-expand {
+    display: none; /* Hide default arrow on Edge/IE */
+}
+
 .flipped {
   transform: scaleX(-1);
   transition: transform 0.5s ease;
@@ -619,11 +638,14 @@ input:checked + .slider:before {
 }
 
 #pointImage {
-  height: auto;
-  width: 100%;
-  max-width: 100%;
+  height: auto; /* Let aspect ratio determine height */
+  width: 100%; /* Fill container width */
+  max-width: 100%; 
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
+  /* object-fit: contain; */ /* REMOVE this to allow stretching */
+  /* background-color: #111; */ /* REMOVE background color */
+  display: block; /* Ensure it behaves like a block */
 }
 
 .class-data {
@@ -670,7 +692,8 @@ input:checked + .slider:before {
   border-radius: 8px !important; /* Rounded corners */
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(5px);
-  max-width: 250px !important; /* Optional: Set a max width */
+  /* max-width: 250px !important; */ /* Remove max-width for now */
+  white-space: nowrap; /* Prevent text wrapping to determine width */
 }
 
 /* Style popup tip (arrow) */

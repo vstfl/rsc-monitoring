@@ -168,114 +168,119 @@ document.addEventListener("DOMContentLoaded", function () {
 
 async function startQuery(date, window) {
   console.log(`[Start Query] Date: ${date}, Window: ${window}`);
-  const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
-  console.log(`[Start Query] Calculated Range: ${startTimestamp.toISOString()} to ${endTimestamp.toISOString()}`);
-  
-  const [imageQueryAVL, imageQueryRWIS] = await queryImagesByDateRange(
-    startTimestamp,
-    endTimestamp,
-  );
-  console.log(`[Start Query] Firebase results - AVL: ${imageQueryAVL?.length || 0}, RWIS: ${imageQueryRWIS?.length || 0}`);
-  // Optional: Log first few items for inspection
-  // console.log("[Start Query] Firebase AVL Sample:", imageQueryAVL?.slice(0, 2));
-  // console.log("[Start Query] Firebase RWIS Sample:", imageQueryRWIS?.slice(0, 2));
-
-  // Scrape online database if AVL/RWIS images exist during time window
-  console.log("[Start Query] Fetching Mesonet AVL data...");
-  const actualImagesAVL = await mesonetGETAVL(date, window);
-  console.log(`[Start Query] Mesonet AVL results: ${actualImagesAVL?.data?.length || 0}`);
-
-  console.log("[Start Query] Fetching Mesonet RWIS data...");
-  const actualImagesRWIS = await mesonetScrapeRWISv2(
-    startTimestamp,
-    endTimestamp,
-  );
-  console.log(`[Start Query] Mesonet RWIS results: ${actualImagesRWIS?.length || 0}`);
-
-  // Construct the request for backend if predictions need to be completed
-  console.log("[Start Query] Checking for missing RWIS predictions...");
-  const imagesForPredRWIS = predictionExistsRWIS(
-    actualImagesRWIS,
-    imageQueryRWIS,
-  );
-  console.log(`[Start Query] Found ${Object.keys(imagesForPredRWIS || {}).length} RWIS images needing prediction.`);
-  
-  console.log("[Start Query] Checking for missing AVL predictions...");
-  const imagesForPredAVL = predictionExistsAVL(actualImagesAVL, imageQueryAVL);
-   console.log(`[Start Query] Found ${Object.keys(imagesForPredAVL || {}).length} AVL images needing prediction.`);
-
-  // If there are images to predict, prep request to RWIS/AVL backend asynchronously
-  if (imagesForPredAVL) {
-    console.log("[Start Query] Sending AVL prediction request...");
-    // console.log("[Start Query] AVL Prediction Payload Sample:", JSON.stringify(Object.values(imagesForPredAVL || {}).slice(0,2)));
-    sendPredictionsAVL(imagesForPredAVL, date, window);
-  } else {
-    console.log("[Start Query] No AVL predictions needed.");
-  }
-
-  if (imagesForPredRWIS) {
-    console.log("[Start Query] Sending RWIS prediction request...");
-    // console.log("[Start Query] RWIS Prediction Payload Sample:", JSON.stringify(Object.values(imagesForPredRWIS || {}).slice(0,2)));
-    sendPredictionsRWIS(imagesForPredRWIS, date, window);
-  } else {
-    console.log("[Start Query] No RWIS predictions needed.");
-  }
-
-  // Update with initial visualization
-  console.log("[Start Query] Updating map visualization...");
-  updateAll(imageQueryAVL, imageQueryRWIS);
-  console.log("[Start Query] Query processing complete.");
-}
-
-async function sendPredictionsAVL(imagesForPredAVL, date, window) {
-  enableLoadingScreen();
+  enableLoadingScreen(); // Show loading for initial fetch
+  let imageQueryAVL, imageQueryRWIS;
   try {
-    console.log("POSTing to AVL Backend");
+      const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
+      console.log(`[Start Query] Calculated Range: ${startTimestamp.toISOString()} to ${endTimestamp.toISOString()}`);
+      
+      // === Step 1: Initial Firebase Fetch ===
+      [imageQueryAVL, imageQueryRWIS] = await queryImagesByDateRange(
+          startTimestamp,
+          endTimestamp,
+      );
+      console.log(`[Start Query] Initial Firebase results - AVL: ${imageQueryAVL?.length || 0}, RWIS: ${imageQueryRWIS?.length || 0}`);
 
-    console.time("Request Duration");
-    const responseData = await postRequestToBackend(
-      imagesForPredAVL,
-      100,
-      "/avl",
-    );
-    console.timeEnd("Request Duration");
+      // === Step 2: Initial Map Update ===
+      console.log("[Start Query] Updating map with initial data...");
+      updateAll(imageQueryAVL, imageQueryRWIS); // Display existing data immediately
+      console.log("[Start Query] Initial map update complete.");
 
-    console.log("Response from AVL Backend: ", responseData);
   } catch (error) {
-    console.error("Error:", error);
+      console.error("[Start Query] Error during initial fetch or update:", error);
+      // Optionally show error to user
+  } finally {
+      fadeOutLoadingScreen(); // Hide loading after initial display
   }
 
-  const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
-  const [imageQueryAVL, imageQueryRWIS] = await queryImagesByDateRange(
-    startTimestamp,
-    endTimestamp,
-  );
-  updateAll(imageQueryAVL, imageQueryRWIS);
-  fadeOutLoadingScreen();
+  // === Step 3: Handle Predictions Asynchronously ===
+  // Don't await this, let it run in the background
+  checkAndTriggerPredictions(date, window, imageQueryAVL, imageQueryRWIS);
+  
+  console.log("[Start Query] Initial processing complete. Prediction checks running in background.");
 }
 
-async function sendPredictionsRWIS(imagesForPredRWIS, date, window) {
-  try {
-    console.log("POSTing to RWIS Backend");
+async function checkAndTriggerPredictions(date, window, initialAvlData, initialRwisData) {
+    console.log("[Predictions Check] Starting background prediction checks...");
+    try {
+        const [startTimestamp, endTimestamp] = calculateDataRange(date, window); // Recalculate if needed
+        let predictionsSent = false;
+        const predictionPromises = [];
 
-    console.time("Request Duration");
-    const responseData = await postRequestToBackend(imagesForPredRWIS, 10, "");
-    console.timeEnd("Request Duration");
+        // --- Fetch Mesonet Data --- 
+        console.log("[Predictions Check] Fetching Mesonet AVL data...");
+        const actualImagesAVL = await mesonetGETAVL(date, window);
+        console.log(`[Predictions Check] Mesonet AVL results: ${actualImagesAVL?.data?.length || 0}`);
 
-    console.log("Response from RWIS Backend: ", responseData);
-  } catch (error) {
-    console.error("Error:", error);
-  }
+        console.log("[Predictions Check] Fetching Mesonet RWIS data...");
+        const actualImagesRWIS = await mesonetScrapeRWISv2(
+            startTimestamp,
+            endTimestamp,
+        );
+        console.log(`[Predictions Check] Mesonet RWIS results: ${actualImagesRWIS?.length || 0}`);
 
-  const [startTimestamp, endTimestamp] = calculateDataRange(date, window);
+        // --- Check for Missing Predictions --- 
+        console.log("[Predictions Check] Checking for missing RWIS predictions...");
+        const imagesForPredRWIS = predictionExistsRWIS(
+            actualImagesRWIS,
+            initialRwisData, // Use initial firebase data for comparison
+        );
+        console.log(`[Predictions Check] Found ${Object.keys(imagesForPredRWIS || {}).length} RWIS images needing prediction.`);
+        
+        console.log("[Predictions Check] Checking for missing AVL predictions...");
+        const imagesForPredAVL = predictionExistsAVL(
+            actualImagesAVL, 
+            initialAvlData // Use initial firebase data for comparison
+        );
+        console.log(`[Predictions Check] Found ${Object.keys(imagesForPredAVL || {}).length} AVL images needing prediction.`);
 
-  const [imageQueryAVL, imageQueryRWIS] = await queryImagesByDateRange(
-    startTimestamp,
-    endTimestamp,
-  );
+        // --- Send Prediction Requests (if needed) --- 
+        if (imagesForPredAVL) {
+            console.log("[Predictions Check] Sending AVL prediction request...");
+            predictionPromises.push(sendPredictionsAVL(imagesForPredAVL, date, window));
+            predictionsSent = true;
+        } else {
+            console.log("[Predictions Check] No AVL predictions needed.");
+        }
 
-  updateAll(imageQueryAVL, imageQueryRWIS);
+        if (imagesForPredRWIS) {
+            console.log("[Predictions Check] Sending RWIS prediction request...");
+            predictionPromises.push(sendPredictionsRWIS(imagesForPredRWIS, date, window));
+            predictionsSent = true;
+        } else {
+            console.log("[Predictions Check] No RWIS predictions needed.");
+        }
+
+        // --- Wait for Predictions and Final Update (if needed) --- 
+        if (predictionsSent) {
+            console.log("[Predictions Check] Waiting for prediction requests to complete...");
+            await Promise.all(predictionPromises);
+            console.log("[Predictions Check] Prediction requests finished. Re-querying Firebase...");
+
+            // Final Firebase Query
+            const [finalAvlData, finalRwisData] = await queryImagesByDateRange(
+                startTimestamp,
+                endTimestamp,
+            );
+            console.log(`[Predictions Check] Final Firebase results - AVL: ${finalAvlData?.length || 0}, RWIS: ${finalRwisData?.length || 0}`);
+            
+            // Final Map Update
+            console.log("[Predictions Check] Updating map with final data...");
+            updateAll(finalAvlData, finalRwisData);
+            console.log("[Predictions Check] Final map update complete.");
+        } else {
+            console.log("[Predictions Check] No predictions were sent, no final update needed.");
+        }
+
+    } catch (error) {
+        console.error("[Predictions Check] Error during background prediction handling:", error);
+        // Optionally: update UI to indicate background task failure
+    }
 }
+
+// Removed prediction sending logic from original startQuery
+// async function sendPredictionsAVL... (Now only sends request)
+// async function sendPredictionsRWIS... (Now only sends request)
 
 function chunkObject(obj, size) {
   // Subdivide full dict to list of subdicts with length "size"
@@ -556,7 +561,26 @@ document
     interpolationStateNIK = false;
     console.log("NN Interpolation Enabled");
 
-    currentInterpolatedGeoJSON = await interpolateGeoJSONLanes(currentGeoJSON);
+    // Get the current GeoJSON from the state manager
+    const geoJsonInput = getState('currentGeoJSON');
+    
+    // Check if input data is valid before proceeding
+    if (!geoJsonInput || !geoJsonInput.type || !geoJsonInput.features) {
+        console.error("Cannot run interpolation: Invalid or missing input GeoJSON data in state.");
+        // Optionally: Show user feedback
+        return; 
+    }
+
+    // Pass the correct data to the interpolation function
+    currentInterpolatedGeoJSON = await interpolateGeoJSONLanes(geoJsonInput);
+    
+    // Add a check here to see if the result is valid before updating map
+    if (!currentInterpolatedGeoJSON || !currentInterpolatedGeoJSON.type || !currentInterpolatedGeoJSON.features) {
+        console.error("Interpolation function returned invalid data:", currentInterpolatedGeoJSON);
+        // Optionally: Show user feedback
+        return;
+    }
+    
     updateInterpolation(currentInterpolatedGeoJSON);
     interpolationState = true;
   });

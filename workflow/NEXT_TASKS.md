@@ -1,137 +1,84 @@
-# RSI Project - Next Tasks
+# Next Tasks & Priorities
 
-Based on the current progress and priority areas identified in the project, the following tasks should be addressed next:
+Based on the recent comprehensive code review, priorities have been re-evaluated to address critical issues and set the stage for robust development.
 
-## Immediate Priority Tasks
+## Phase 1: Critical Fixes & Foundation (Immediate Focus)
 
-### 1. Security Improvements (Highest)
+These tasks are essential for security, stability, and enabling further development and testing.
 
-- **Task 2.1.2**: Move Mapbox access token to environment variables
-  - Create .env file configuration
-  - Update build process to use environment variables
-  - Document setup requirements
+1.  **[Security] Extract Keys/Config to Environment Variables:** *(Highest Priority)*
+    *   **Goal:** Remove hardcoded Mapbox token and Firebase config.
+    *   **Action:** Use `.env` files and Webpack `DefinePlugin`.
+    *   **Files:** `mapInteractions.js`, `firebaseHandler.js`, `webpack.config.js`.
 
-- **Task 2.1.3**: Move Firebase configuration to environment variables
-  - Extract Firebase credentials to environment
-  - Implement secure authentication flows (Consider using App Check)
-  - Add proper security rules (Review existing rules)
+2.  **[Build] Fix Jest/Babel Configuration:** *(High Priority)*
+    *   **Goal:** Resolve ES Module transformation errors (e.g., `kdbush` in `interpolation.js`).
+    *   **Action:** Update Jest/Babel config (`jest.config.js`, `babel.config.js` or `package.json`).
+    *   **Files:** `jest.config.js`, potentially Babel config.
 
-### 2. Architecture & Maintainability (High)
+3.  **[Architecture] Refactor `stateManager.js` for Testability:** *(High Priority)*
+    *   **Goal:** Allow resetting state between tests.
+    *   **Action:** Add a `reset()` or `clear()` method, conditionally exported/enabled for test environments.
+    *   **Files:** `src/core/stateManager.js`, relevant test files.
 
-- **Task 1.3.1**: Split `webInteractions.js` further into domain-specific modules
-  - Create separate modules for UI components/logic (e.g., form handling, NIK logic)
-  - Extract event handlers into separate modules or integrate with UI modules
-  - Create dedicated modules for specific functionality (e.g., Mesonet API interaction)
+4.  **[Error Handling] Implement Robust `try/catch` on Critical Paths:** *(High Priority)*
+    *   **Goal:** Prevent application crashes from failed external calls.
+    *   **Action:** Wrap critical `fetch` calls (Firebase query, Mesonet, Backend warmup) and Mapbox initialization in `try/catch` blocks with basic logging.
+    *   **Files:** `firebaseHandler.js`, `webInteractions.js`, `mapInteractions.js`.
 
-- **(New) Task 1.4.1**: Refactor `stateManager.js` for testability
-  - Expose a reset/clear function for testing purposes.
-  - Ensure module state doesn't leak between tests.
+5.  **[Refactoring] Start `webInteractions.js` Split (API Service):** *(High Priority)*
+    *   **Goal:** Begin breaking down `webInteractions.js` by extracting API call logic.
+    *   **Action:** Create `src/core/apiService.js` (or similar) and move Mesonet/Backend fetch logic there. Update `webInteractions.js` to use the service.
+    *   **Files:** `webInteractions.js`, `src/core/apiService.js` (new).
 
-- **(New) Task 6.1.5**: Investigate & Fix Build Config for ES Module Transformation
-  - Analyze Jest and Babel configuration (`jest.config.js`, `babel.config.js` if exists).
-  - Ensure `node_modules` like `kdbush` are correctly transformed.
-  - *Goal: Unblock testing for `interpolation.js`.*
+6.  **[Refactoring] Decouple UI Panel Updates from `mapInteractions.js`:** *(High Priority)*
+    *   **Goal:** Ensure map logic doesn't directly manipulate side panel DOM.
+    *   **Action:** Move all DOM updates related to the point info panel (image, text, chart trigger) into `uiInteractions.js`. Make these updates react purely to changes in the `clickedPointValues` state.
+    *   **Files:** `mapInteractions.js`, `src/core/ui/uiInteractions.js`.
 
-- **Task 1.3.3**: Create a proper config module for application settings (e.g., API URLs, constants)
+## Phase 2: Core Refactoring & Stability (Near Term)
 
-- **Task 1.3.4**: Implement clear interfaces between modules
-  - Define clear API boundaries
-  - Document module interfaces
-  - Remove direct cross-module access (ensure state manager is used)
+Focus on completing the major refactoring, improving code quality, and enabling comprehensive testing.
 
+7.  **[Refactoring] Complete `webInteractions.js` & `mapInteractions.js` Split:** *(High Priority)*
+    *   **Goal:** Fully separate concerns into smaller, manageable modules.
+    *   **Action:** Extract form handling, NIK logic, etc., from `webInteractions`. Ensure `mapInteractions` focuses solely on map setup, layers, and state updates.
+    *   **Files:** `webInteractions.js`, `mapInteractions.js`, potentially new modules.
 
-### 3. Error Handling Improvements (High)
+8.  **[Error Handling] Comprehensive Implementation & User Feedback:** *(Medium Priority)*
+    *   **Goal:** Handle errors gracefully across the application.
+    *   **Action:** Wrap remaining async operations. Add basic user feedback for critical errors (e.g., toast notification, message area).
+    *   **Files:** Various modules.
 
-- **Task 4.1.1**: Add try/catch blocks to all Firebase operations (`firebaseHandler.js`)
-  - Audit all Firebase API calls
-  - Implement proper error handling and logging
-  - Add recovery mechanisms where appropriate
+9.  **[Code Quality] Implement ESLint/Prettier & Constants:** *(Medium Priority)*
+    *   **Goal:** Enforce style consistency and remove magic strings.
+    *   **Action:** Set up ESLint/Prettier. Create `src/core/constants.js` and replace hardcoded URLs, IDs, etc.
+    *   **Files:** Config files, potentially all JS files.
 
-- **Task 4.1.x**: Implement error handling for Mesonet API fetches (`webInteractions.js`)
-  - Ensure `fetch` calls have `.catch()` blocks
-  - Handle network errors gracefully and inform the user
+10. **[Testing] Add Unit Tests for `interpolation.js` & Refactored Modules:** *(Medium Priority)*
+    *   **Goal:** Increase test coverage for core logic.
+    *   **Action:** Write tests now that build config is fixed and modules are smaller.
+    *   **Files:** `__tests__` directory.
 
-- **Task 4.1.2**: Implement error handling for Mapbox operations
-  - Add error handling for map initialization
-  - Implement error recovery for layer operations
-  - Create fallbacks for map rendering failures
+11. **[Testing] Refine Integration Tests:** *(Medium Priority)*
+    *   **Goal:** Ensure integration tests reflect the new architecture.
+    *   **Action:** Update `interactions.test.js` to mock dependencies at the new module boundaries.
+    *   **Files:** `src/__tests__/interactions.test.js`.
 
-- **Task 4.2.1**: Design and implement user-friendly error messages
-  - Create standardized error message components
-  - Implement error state UI
-  - Add contextual help for common errors
+## Phase 3: Optimization & Feature Hardening (Medium Term)
 
-### 4. Testing Infrastructure (Refinement & Blockers)
+Enhance performance, address technical debt, and improve user experience.
 
-- **Task 6.1.3**: Set up test coverage reporting
-  - Configure Jest coverage reporting
-  - Add coverage thresholds for critical modules
-  - Generate coverage reports during CI/CD
+12. **[Performance] Implement Map Rendering Optimizations:** *(Medium Priority)*
+13. **[Performance] Parallelize Independent Fetches:** *(Medium Priority)*
+14. **[Performance] Add Caching for `loadSubdividedRoads`:** *(Medium Priority)*
+15. **[Code Quality] Address TODOs & Add JSDoc:** *(Medium Priority)*
+16. **[UI] Add Loading Indicators for Background Tasks:** *(Low Priority)*
 
-- **Task 6.2.2**: Review and Refine tests for map functionality
-  - Review existing integration tests in `src/__tests__/interactions.test.js` and `src/__tests__/integration.test.js`.
-  - Improve test clarity and assertions.
-  - Consider adding tests for specific map interactions (zoom, pan effects if any).
+## Phase 4: Advanced & Long Term
 
-- **(Deferred) Task 6.2.3**: Implement tests for data processing (`interpolation.js`, `firebaseHandler.js`)
-  - *Blocked by Task 1.4.1 (stateManager refactor) and Task 6.1.5 (build config).*
-  - *Also blocked by complex mocking required for `firebaseHandler.js`.*
+Consider larger architectural changes and final polishing.
 
-- **(Deferred) Task 6.2.x**: Fix failing test in `dataTransformUtils.test.js`
-  - Investigate the cause of the expectation failure.
-
-## Medium Priority Tasks
-
-### 5. Performance Optimization
-
-- **Task 3.1.1**: Implement efficient caching for processed GeoJSON data
-  - Add in-memory caching for frequently accessed data
-  - Implement localStorage for persistence
-  - Create cache invalidation strategy
-
-- **Task 3.2.1**: Implement level-of-detail rendering based on zoom
-  - Create zoom-based rendering rules
-  - Optimize point density at different zoom levels
-  - Implement dynamic feature simplification
-
-### 6. Code Quality Improvements
-
-- **Task 5.1.1**: Set up ESLint with appropriate configuration
-  - Create ESLint configuration
-  - Add rules for consistent coding style
-  - Configure integration with development environment
-
-- **Task 5.3.1**: Add JSDoc comments to all public functions
-  - Document function parameters and return values
-  - Add usage examples where appropriate
-  - Document complex algorithms and logic
-
-## Specific Issues to Address (Maintainability)
-
-1.  **Fix TODO items in interpolation.js** (when module is testable/build issues resolved)
-    - Implement real-time NIK interpolation
-    - Optimize spatial queries with proper indexing
-    - Document complex spatial algorithms
-
-2.  **Refactor DEFUNCT/outdated code**
-    - Remove or update legacy functions like `parseTruckURL`
-    - Replace deprecated API calls
-    - Remove commented-out code (e.g., the `DOMContentLoaded` block in `webInteractions.js`)
-
-3.  **Improve test maintainability**
-    - Add more descriptive test names
-    - Create helper functions for common test operations
-    - Implement better mock strategies (Review existing mocks)
-
-## Next Steps for Implementation (Updated)
-
-1.  Address security concerns (move keys/config to env vars).
-2.  Continue module separation for `webInteractions.js`.
-3.  Refactor `stateManager.js` for testability.
-4.  Investigate and fix the build configuration issue blocking ES module transforms.
-5.  Implement error handling for async operations (Firebase, Mesonet, Mapbox).
-6.  Set up test coverage reporting and refine existing tests.
-7.  *(Deferred)* Write tests for `interpolation.js` and `firebaseHandler.js` once blockers are removed.
-8.  Gradually implement performance optimizations and code quality improvements (Linting, Docs).
-
-This plan prioritizes security and resolving critical architectural/build blockers before attempting currently infeasible tests or lower-priority items. 
+17. **[Architecture] Evaluate Component-Based Architecture:** *(Low Priority)*
+18. **[Testing] Implement E2E Testing (e.g., Cypress):** *(Low Priority)*
+19. **[Code Quality] Address Remaining Items:** *(Low Priority)* 

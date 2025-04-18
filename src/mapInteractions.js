@@ -5,7 +5,7 @@ import { addData, removeData, newChart } from "./charts.js";
 import RainLayer from "mapbox-gl-rain-layer";
 import { filterStudyArea } from "./interpolation.js";
 import { getState, setState, subscribe } from "./core/stateManager.js";
-import { toggleImageSrc } from './core/ui/uiInteractions.js';
+import { toggleImageSrc, populateAngleSelector } from './core/ui/uiInteractions.js';
 
 /**
  * Handle's the majority of relevant map interactions for the user.
@@ -352,6 +352,7 @@ const idDisplay = document.getElementById("pointID");
 const timeDisplay = document.getElementById("pointTimestamp");
 const imageDisplay = document.getElementById("pointImage");
 const chart = newChart();
+setState('chart', chart); // Store chart instance in state
 
 // Variable to hold the hover popup
 let hoverPopup = null; 
@@ -415,6 +416,7 @@ map.on("click", "latestLayer", (event) => {
   const feature = event.features[0];
   const eventProperties = feature.properties;
   const imgControls = document.getElementById("img-buttons");
+  const angleSelect = document.getElementById("angle-select");
   console.log("[Click] Feature Properties (Raw):", eventProperties);
 
   let newClickedPointValues;
@@ -448,12 +450,22 @@ map.on("click", "latestLayer", (event) => {
       classes: classData,
       image: imageUrl,
       CAM: false,
-      type: eventProperties.type
+      type: eventProperties.type,
+      angles: null,
+      currentAngle: null
     };
     imgControls.style.display = "none";
-    
-    // Remove listener if it exists from a previous RWIS click
     imageDisplay.removeEventListener('click', toggleImageSrc);
+    if (angleSelect) { angleSelect.innerHTML = '<option value="" disabled>Angle</option>'; angleSelect.disabled = true; }
+    
+    // Explicitly update image display for AVL
+    if (imageUrl) {
+        imageDisplay.src = imageUrl;
+        imageDisplay.parentNode.style.display = "block";
+    } else {
+        imageDisplay.src = ""; 
+        imageDisplay.parentNode.style.display = "none";
+    }
     
   } else if (eventProperties.type === "RWIS") {
     console.log("[Click] RWIS point clicked.");
@@ -461,79 +473,104 @@ map.on("click", "latestLayer", (event) => {
     stateCAM = true; // Enable CAM toggling for RWIS
     
     const recentAngle = eventProperties.recentAngle;
-    let angles = eventProperties.angles;
+    let anglesObject = {}; // Store the full parsed angles object
+    let anglesString = eventProperties.angles;
     
-    if (typeof angles === 'string') {
+    if (typeof anglesString === 'string') {
         try {
-            angles = JSON.parse(angles);
+            anglesObject = JSON.parse(anglesString);
              console.log("[Click] Parsed RWIS angles data.");
         } catch (e) {
-            console.error("[Click] Error parsing RWIS angles data:", e, "Raw data:", eventProperties.angles);
-            angles = {};
+            console.error("[Click] Error parsing RWIS angles data:", e, "Raw data:", anglesString);
+            anglesObject = {}; // Default to empty if parse fails
         }
     }
     
-    console.log("[Click] RWIS Debug - recentAngle:", recentAngle, "(Type:", typeof recentAngle, ")");
-    console.log("[Click] RWIS Debug - angles object (after potential parse):", angles, "(Type:", typeof angles, ")");
+    let initialAngle = recentAngle;
+    // If recentAngle is invalid or not in parsed object, pick the first available angle
+    if (!initialAngle || !anglesObject[initialAngle]) {
+        const availableKeys = Object.keys(anglesObject).sort();
+        if (availableKeys.length > 0) {
+            initialAngle = availableKeys[0];
+            console.warn(`[Click] Recent angle '${recentAngle}' not found or invalid. Using first available angle: '${initialAngle}'`);
+        } else {
+             console.error("[Click] No valid angles found in angles data.");
+             initialAngle = null; // No valid angle to display
+        }
+    }
 
-    if (angles && typeof angles === 'object' && recentAngle && angles[recentAngle]) {
-      const recentAngleData = angles[recentAngle];
-      console.log(`[Click] RWIS Angle ${recentAngle} Data:`, recentAngleData);
-      imageUrl = recentAngleData.url;
-      classData = recentAngleData.class;
-      
-      newClickedPointValues = {
+    const initialAngleData = initialAngle ? anglesObject[initialAngle] : {};
+    imageUrl = initialAngleData.url; // Use initial angle image
+    classData = initialAngleData.class; // Use initial angle class data
+
+    // Populate selector with all angles, selecting the initial one
+    populateAngleSelector(anglesObject, initialAngle);
+    
+    // Set state including all angles and the current one
+    setState("clickedPointValues", {
         type: eventProperties.type,
         specificID: feature.id,
         avlID: eventProperties.id, 
         timestamp: timestampToISOString(eventProperties.timestamp),
-        classification: recentAngleData.classification, 
-        classes: classData,
-        image: imageUrl,
-        CAM: false 
-      };
-    } else {
-      console.warn("[Click] Could not find recent angle data for RWIS point (after potential parse):", eventProperties.id, "Recent Angle:", recentAngle);
-      newClickedPointValues = {
-          type: eventProperties.type,
-          specificID: feature.id,
-          avlID: eventProperties.id,
-          timestamp: timestampToISOString(eventProperties.timestamp),
-          classification: 'Undefined', 
-          classes: {}, 
-          image: undefined, 
-          CAM: false
-      };
-      imageUrl = undefined;
-      classData = undefined;
-    }
-    
-    // Add the listener AFTER setting the image source and display
+        classification: initialAngleData.classification, // Use initial classification
+        classes: classData, // Use initial class data
+        image: imageUrl, // Use initial image url
+        CAM: false, 
+        angles: anglesObject, // Store all angle data
+        currentAngle: initialAngle // Store the currently displayed angle key
+    });
+    setState('imageAspectRatio', null); // Clear aspect ratio initially
+
+    // Update image display and add listener for RWIS
     if (imageUrl) {
         imageDisplay.src = imageUrl;
         imageDisplay.parentNode.style.display = "block";
-        // Remove any old listener first, then add the new one
+        
+        // Add onload listener to capture aspect ratio
+        imageDisplay.onload = () => {
+            const aspectRatio = imageDisplay.naturalWidth / imageDisplay.naturalHeight;
+            if (aspectRatio && isFinite(aspectRatio)) {
+                console.log(`[Click] Original image aspect ratio: ${aspectRatio}`);
+                setState('imageAspectRatio', aspectRatio);
+                imageDisplay.style.aspectRatio = aspectRatio; // Apply immediately
+            } else {
+                 setState('imageAspectRatio', null);
+                 imageDisplay.style.aspectRatio = ''; // Clear if invalid
+            }
+            imageDisplay.onload = null; // Remove listener after execution
+        };
+        imageDisplay.onerror = () => { // Handle image load errors
+             setState('imageAspectRatio', null);
+             imageDisplay.style.aspectRatio = '';
+             imageDisplay.onerror = null;
+             imageDisplay.onload = null;
+        }
+
         imageDisplay.removeEventListener('click', toggleImageSrc); 
         imageDisplay.addEventListener('click', toggleImageSrc); 
     } else {
         imageDisplay.src = ""; 
         imageDisplay.parentNode.style.display = "none";
-        // Remove listener if image isn't displayed
         imageDisplay.removeEventListener('click', toggleImageSrc);
+        setState('imageAspectRatio', null); // Clear aspect ratio if no image
+        imageDisplay.style.aspectRatio = '';
     }
   } else {
     console.error("[Click] Unknown feature type:", eventProperties.type);
-    // Remove listener for unknown types too
+    imgControls.style.display = "none";
+    if (angleSelect) { angleSelect.innerHTML = '<option value="" disabled>Angle</option>'; angleSelect.disabled = true; }
     imageDisplay.removeEventListener('click', toggleImageSrc);
+    setState("clickedPointValues", null);
+    setState('imageAspectRatio', null); // Clear aspect ratio for non-RWIS
+    imageDisplay.style.aspectRatio = '';
     return; 
   }
 
-  console.log("[Click] Setting clickedPointValues state:", newClickedPointValues);
-  setState("clickedPointValues", newClickedPointValues);
-
-  idDisplay.textContent = newClickedPointValues.avlID || '';
-  timeDisplay.textContent = newClickedPointValues.timestamp || '';
+  // Update text content (common)
+  idDisplay.textContent = getState("clickedPointValues")?.avlID || '';
+  timeDisplay.textContent = getState("clickedPointValues")?.timestamp || '';
   
+  // Update chart (common)
   removeData(chart);
   if (classData) {
       console.log("[Click] Updating chart with data:", classData);
@@ -601,7 +638,7 @@ map.on("mousemove", "latestLayer", (event) => {
     
     const popupContent = `
       <div class="hover-popup-content">
-        ${previewImageUrl ? '<img src="' + previewImageUrl + '" alt="Preview" width="60" style="display: block; margin-bottom: 5px; border-radius: 3px;">' : ''}
+        ${previewImageUrl ? '<img src="' + previewImageUrl + '" alt="Preview" width="100%" style="display: block; margin-bottom: 5px; border-radius: 3px;">' : ''}
         <strong>ID:</strong> ${properties.id || 'N/A'}<br>
         <strong>Time:</strong> ${timestampToISOString(properties.timestamp) || 'N/A'}<br>
         <strong>Class:</strong> ${properties.classification || 'N/A'}

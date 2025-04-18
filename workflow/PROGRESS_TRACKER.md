@@ -1,120 +1,75 @@
 # RSI Project Progress Tracker
 
-## Priority Change Areas
+## Priority Change Areas (Re-prioritized based on Code Review)
 
-1. **Code Organization and Architecture**
+1. **Security Improvements**
+   - [ ] **(Highest)** Move credentials (Mapbox, Firebase) to environment variables
+   - [ ] Implement secure authentication flows (Lower Priority)
+   - [ ] Add input validation (Medium Priority)
 
-   - [x] Analyze circular dependencies (Task 1.1.1)
-   - [x] Refactor webInteractions.js (Task 1.1.2) - *Initial refactor done, further split needed*
-   - [x] Refactor mapInteractions.js (Task 1.1.3)
-   - [x] Create state manager (Task 1.1.4)
-   - [x] Implement state management pattern
-   - [x] Create clear module separation (Task 1.3.x - *Created core/utils and core/ui*)
+2. **Code Organization and Architecture**
+   - [ ] **(High)** Refactor `stateManager.js` for testability (add reset/clear)
+   - [ ] **(High)** Complete refactor of `webInteractions.js` (Split API, UI logic)
+   - [ ] **(High)** Refactor `mapInteractions.js` (Separate map logic from DOM updates)
+   - [ ] **(High)** Decouple UI panel updates from `mapInteractions` (Use state-driven updates in `uiInteractions`)
+   - [x] Analyze circular dependencies (Done)
+   - [x] Create state manager (Done)
+   - [x] Implement state management pattern (Done)
+   - [x] Create clear module separation (Core utils/ui done, *needs more module splitting*)
 
-2. **Security Improvements**
-
-   - [ ] Move credentials to environment variables
-   - [ ] Implement proper input validation
-   - [ ] Add secure authentication flows
-
-3. **Performance Optimization**
-
-   - [ ] Optimize data processing with caching
-   - [ ] Implement level-of-detail rendering
-   - [ ] Move heavy computations to Web Workers
+3. **Testing Infrastructure & Build Fixes**
+   - [ ] **(High)** Fix Jest/Babel build config for ES Module transformation (e.g., `kdbush`)
+   - [ ] Add unit tests for `interpolation.js` (Blocked by build config)
+   - [ ] Add unit tests for `firebaseHandler.js` (Needs strategy - mocking?)
+   - [ ] Add unit tests for refactored modules (`apiService`, `mapLogic`, `uiPanel`)
+   - [ ] Refine integration tests (`src/__tests__/interactions.test.js`) for new architecture
+   - [x] Set up testing framework (Done)
+   - [x] Create unit tests for core functionality (Done: `stateManager`, `logger`, `dateTimeUtils`, `dataTransformUtils`, `uiInteractions` - *but `stateManager` test limited*)
+   - [x] Create test documentation (Done - *may need update*)
 
 4. **Error Handling**
-
-   - [x] Add comprehensive try/catch for async operations (Partially implemented - *Improved in event handlers*)
-   - [x] Implement error handling in state manager
-   - [ ] Implement user-friendly error messages
-   - [ ] Create fallback mechanisms for data loading
+   - [ ] **(High)** Implement robust `try/catch` for critical async operations (Firebase query, Mesonet, Backend warmup, Mapbox init)
+   - [ ] **(Medium)** Implement comprehensive `try/catch` for *all* remaining async operations
+   - [ ] **(Medium)** Implement user-friendly error messages/feedback
+   - [x] Add error handling to state manager (Done)
+   - [x] Added error handling in some event handlers (Done - *partially*)
 
 5. **Code Quality**
+   - [ ] **(Medium)** Standardize code style with ESLint/Prettier
+   - [ ] **(Medium)** Create `constants.js` module (remove magic strings/URLs)
+   - [ ] **(Medium)** Improve documentation with JSDoc (start with core/refactored modules)
+   - [ ] Address TODOs (e.g., in `interpolation.js`)
+   - [ ] Remove commented-out/dead code
+   - [ ] Remove inline styles (`template.html`)
+   - [x] Remove code duplication (Core utils extracted - *needs ongoing effort*)
 
-   - [ ] Standardize code style with ESLint/Prettier
-   - [x] Remove code duplication (*Moved utils from webInteractions*)
-   - [ ] Improve documentation with JSDoc
+6. **Performance Optimization**
+   - [ ] **(Medium)** Implement map rendering optimizations (clustering / zoom filtering)
+   - [ ] **(Medium)** Parallelize independent fetches (e.g., Mesonet checks in `checkAndTriggerPredictions`)
+   - [ ] **(Medium)** Add caching for `loadSubdividedRoads`
+   - [ ] **(Low)** Add loading indicators for background tasks
+   - [ ] Move heavy computations to Web Workers (Lower Priority)
 
-6. **Testing Infrastructure**
-   - [x] Set up testing framework
-   - [x] Create unit tests for core functionality (*stateManager, logger, dateTimeUtils, dataTransformUtils, uiInteractions*)
-   - [~] Implement integration tests (Partially implemented - *Existing integration test kept*)
-   - [x] Create test documentation
+## Completed Tasks (Summary - Keep Existing Detail Below if Preferred)
 
-## Completed Tasks
+- Initial setup (Testing framework, state manager, logger, core utils)
+- Partial refactoring (State manager integration, core utils extraction)
+- Basic error handling added (State manager, some event handlers)
+- Basic tests for core utils/state manager implemented
+- Several UI features/bug fixes implemented (Hover popup, aspect ratio, angle switching, etc.)
 
-### Task 1.1.1: Analyze Circular Dependencies
+## Current Sprint Focus (Revised Priorities)
 
-- Identified circular dependencies between `webInteractions.js` and `mapInteractions.js`
-- Created state management solution in `src/core/stateManager.js`
-- Documented shared state and event communication patterns
+1.  **Security:** Move all keys/config to environment variables.
+2.  **Build:** Fix Jest/Babel build config for ES Modules.
+3.  **Architecture:** Refactor `stateManager.js` for testability.
+4.  **Error Handling:** Add robust `try/catch` to critical async paths.
+5.  **Refactoring:** Start splitting `webInteractions` and decouple UI panel updates from `mapInteractions`.
 
-### Task 1.1.2: Refactor webInteractions.js
+## Next Steps (Pending Current Sprint)
 
-- Removed direct imports from mapInteractions.js
-- Implemented state manager for shared state
-- Updated event handlers to use state manager
-- Added proper null checks for map instance
-
-### Task 1.1.3: Refactor mapInteractions.js
-
-- Implemented state manager for map instance and data
-- Added state-based layer management
-- Updated point interactivity to use state
-- Implemented real-time update system
-
-### Task 1.1.4: Create State Manager
-
-- Implemented pub/sub pattern
-- Created centralized state management
-- Added proper state initialization
-- Implemented state update notifications
-- Added error handling for state updates
-
-### Task 1.3.x: Create Module Separation (Utilities & UI)
-
-- Extracted date/time, data transformation, and UI interaction functions from `webInteractions.js`.
-- Created dedicated modules: `src/core/utils/dateTimeUtils.js`, `src/core/utils/dataTransformUtils.js`, `src/core/ui/uiInteractions.js`.
-- Updated `webInteractions.js` to import and use these modules.
-- Cleaned up redundant code from `webInteractions.js`.
-
-### Task 6.1.1: Set up Testing Framework
-
-- Configured Jest for unit testing
-- Added JSDOM for browser environment simulation
-- Set up CSS module mocking 
-- Configured Babel for test file transformation
-
-### Task 6.2.1 / 6.2.x: Create Unit Tests for Core Utilities
-
-- Implemented unit tests for `dateTimeUtils.js`.
-- Implemented unit tests for `dataTransformUtils.js`.
-- Implemented and fixed unit tests for `uiInteractions.js`.
-
-### Task 6.2.1: Create Core Module Tests
-
-- Implemented tests for Logger utility
-- Created tests for StateManager (setting/getting, subscription, error handling)
-- Added basic integration tests for map and UI interactions
-
-## Current Sprint Focus
-
-### Testing & Error Handling Implementation
-
-1. Completed:
-   - Set up Jest testing framework
-   - Implemented unit tests for core utilities (`stateManager`, `logger`, `dateTimeUtils`, `dataTransformUtils`, `uiInteractions`)
-   - Added error handling to state management
-   - Created basic integration tests
-   - Documented test architecture and coverage
-   - Fixed several interaction bugs related to data handling
-   - Improved logging for easier debugging
-
-2. Next steps:
-   - Add unit tests for `interpolation.js` functions
-   - Implement tests for data processing (`firebaseHandler.js`, `convertToGeoJSON` deeper tests?)
-   - Improve error handling in async operations (Firebase, Mesonet fetches)
-   - Create user-friendly error messages
-   - Set up test coverage reporting
-   - Refine integration tests (`src/__tests__/interactions.test.js`)
+1.  Complete refactoring of `webInteractions` & `mapInteractions`.
+2.  Implement comprehensive error handling & user feedback.
+3.  Write tests for `interpolation.js` and refactored modules.
+4.  Implement ESLint/Prettier & `constants.js`.
+5.  Begin performance optimizations (Map rendering, parallel fetches).

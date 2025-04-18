@@ -278,3 +278,50 @@ To address these issues without a complete rewrite, we recommend the following p
 2. Implement proper separation of concerns
 3. Add comprehensive documentation
 4. Complete test coverage
+
+## 9. Current Code Review Findings (Update: [Current Date])
+
+This review confirms many previously identified issues persist and highlights new ones or shifts emphasis based on recent changes:
+
+1.  **Security:** Hardcoded keys/config remain the **most critical** outstanding issue.
+2.  **Architecture:**
+    *   `webInteractions.js` and `mapInteractions.js` remain monolithic and require urgent refactoring to separate concerns (API, UI, Map Logic, State Updates).
+    *   Module coupling is still high; UI updates should be driven solely by state changes, not direct calls from modules like `mapInteractions`.
+    *   `stateManager.js` requires refactoring to improve testability (add reset/clear function).
+3.  **Build/Test Environment:** Jest/Babel configuration issues blocking ES Module transformation (`kdbush` in `interpolation.js`) need resolution to enable testing.
+4.  **Error Handling:** While improved, requires comprehensive implementation across all async operations (`fetch`, Firestore, Mapbox) with user-facing feedback.
+5.  **Code Quality:** Lack of JSDocs, inconsistent naming, magic strings, inline styles, and TODOs hinder maintainability.
+6.  **Performance:** Opportunities exist in parallelizing fetches, implementing map rendering optimizations (clustering/zoom-based), and caching.
+7.  **Testing:** Significant gaps remain, blocked by build config and module testability issues. Existing tests rely heavily on mocks.
+
+## Updated Phased Approach Recommendations:
+
+Based on the current state, the phases should be slightly adjusted:
+
+### Phase 1: Critical Fixes & Foundation (Immediate Focus)
+
+1.  **Security:** Extract ALL hardcoded keys/config to environment variables.
+2.  **Architecture:** Refactor `stateManager.js` for testability.
+3.  **Build:** Fix Jest/Babel configuration for ES Module transformation.
+4.  **Error Handling:** Implement robust `try/catch` around critical `fetch` calls (Firebase, Mesonet, Backend Warmup) and Mapbox init.
+5.  **Refactoring (Start):** Begin splitting `webInteractions.js` (e.g., extract API calls to `apiService.js`). Decouple side panel DOM updates from `mapInteractions.js` (move logic to `uiInteractions` driven by state).
+
+### Phase 2: Core Refactoring & Stability (Near Term)
+
+1.  **Refactoring (Continue):** Complete major refactoring of `webInteractions.js` and `mapInteractions.js` into smaller, single-responsibility modules.
+2.  **Error Handling:** Add comprehensive handling across remaining async operations and provide basic user feedback.
+3.  **Code Quality:** Implement ESLint/Prettier. Create a `constants.js` module. Add JSDoc to core modules.
+4.  **Testing:** Add unit tests for newly refactored modules and previously blocked ones (`interpolation.js`). Refine integration tests.
+
+### Phase 3: Optimization & Feature Hardening (Medium Term)
+
+1.  Implement performance optimizations (parallel fetches, map clustering/filtering, caching).
+2.  Address TODOs in `interpolation.js`.
+3.  Improve UI feedback (loading indicators for background tasks).
+4.  Enhance documentation.
+
+### Phase 4: Advanced & Long Term
+
+1.  Consider broader architectural patterns if needed (e.g., full component-based UI).
+2.  Implement comprehensive E2E testing.
+3.  Address remaining lower-priority code quality items.
